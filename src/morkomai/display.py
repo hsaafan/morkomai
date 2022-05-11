@@ -91,23 +91,18 @@ class Display:
         output = subprocess.check_output(self._preface + command, shell=True)
         return(output)
 
-    def keystroke(self, key: str, time_held: float = 0.01) -> None:
-        """Send keystroke to display server using xdotool keydown/keyup.
+    def keystroke(self, key: str, time_held: float = 50) -> None:
+        """Send keystroke to display server using xdotool key.
 
-        Using the xdotool keystroke command results in a lot of missed inputs.
         Parameters
         ----------
         key: str
             The keystroke to send, consult xdotool for the list of keys.
         time_held: float, optional
-            The time in seconds between pressing down and releasing a key, the
-            default is 0.01.
+            The time in ms to hold the key down, the default is 50.
         """
         self.check_still_running()
-        # self.call(f'xdotool key "{key}"')
-        self.keydown(key)
-        time.sleep(time_held)
-        self.keyup(key)
+        self.call(f'xdotool key --delay {time_held} "{key}"')
 
     def send_string(self, string: str, press_enter: bool = False) -> None:
         """Send typed string to display server using xdotool type command.
@@ -153,6 +148,18 @@ class Display:
         """
         self.check_still_running()
         self.call(f'xdotool keyup {key}')
+
+    def capture(self, file_path: str = '.captures/temp.png') -> None:
+        """Takes a screenshot of the display server using scrot.
+
+        Parameters
+        ----------
+        file_path: str, optional
+            The full path (including name and extension) to save the image to.
+            Defaults to .captures/temp.png in current working directory.
+        """
+        self.check_still_running()
+        self.call(f'scrot -o {file_path}')
 
     def stop(self) -> None:
         """Terminate the display server process."""

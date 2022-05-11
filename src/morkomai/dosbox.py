@@ -1,6 +1,7 @@
 import subprocess
 import time
 from display import Display
+import psutil
 
 
 class DOSBox:
@@ -34,9 +35,16 @@ class DOSBox:
         if self._shell is None:
             return(False)
         else:
-            return(self._shell.poll() is None)
+            shell_running = self._shell.poll() is None
+            gui_running = psutil.pid_exists(self.pid)
+            return(shell_running and gui_running)
     is_running = property(fget=_get_status,
                           doc="True if dosbox application is running.")
+
+    def check_still_running(self) -> None:
+        """Checks that dosbox is running."""
+        if not self.is_running:
+            raise ChildProcessError('dosbox has stopped')
 
     def start(self, mount_folder: str = None, conf_file: str = None) -> None:
         """Start the dosbox program.
@@ -83,3 +91,7 @@ class DOSBox:
         self.send_string = self._display.send_string
         self.keydown = self._display.keydown
         self.keyup = self._display.keyup
+        self.capture = self._display.capture
+
+    def fast_forward(self):
+        self.keydown('ALT+F12')

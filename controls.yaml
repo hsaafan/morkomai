@@ -1,0 +1,23 @@
+# This file does not set the in-game controls, it tells the AI what the
+# controls are
+
+player1:
+  left: "z"
+  right: "c"
+  crouch: "x"
+  jump: "s"
+  block: "j"
+  high_punch: "u"
+  low_punch: "n"
+  high_kick: "i"
+  low_kick: "m"
+player2:
+  left: "KP_Left"
+  right: "KP_Right"
+  crouch: "KP_Down"
+  jump: "KP_Up"
+  block: "KP_5"
+  high_punch: "KP_7"
+  low_punch: "KP_1"
+  high_kick: "KP_9"
+  low_kick: "KP_3"
