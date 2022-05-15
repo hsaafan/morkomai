@@ -2,3 +2,4 @@ dosprogs/
 *__pycache__/
 venv/
 .captures/
+.vscode/launch.json

@@ -1,8 +1,8 @@
-from dosbox import DOSBox
-from recorder import ScreenRecorder
 from os.path import abspath
-import yaml
 import threading
+import yaml
+from .dosbox import DOSBox
+from .recorder import ScreenRecorder
 
 
 class MortalKombat:
@@ -32,15 +32,19 @@ class MortalKombat:
             The path of an image of the screen where players can join.
         character_select_screen: str
             The path of an image of the character select screen.
+        p_save: float
+            The probability of saving captured images to file.
+        record_framerate: float
+            The number of frames to capture per second.
         """
         if dosbox is None:
             dosbox = DOSBox()
         self._dosbox = dosbox
-        self.capture = dosbox.capture
         self.load_settings(settings)
 
         if recorder is None:
-            recorder = ScreenRecorder(dosbox._display, self.capture_folder)
+            recorder = ScreenRecorder(dosbox._display, self.capture_folder,
+                                      self.p_save, self.record_framerate)
         self._recorder = recorder
 
     def start(self, conf_file: str = 'dos.conf') -> None:
@@ -55,8 +59,10 @@ class MortalKombat:
         """
         if self._dosbox.is_running:
             raise RuntimeError('dosbox is already running')
+        if self._recorder.is_running:
+            raise RuntimeError('Recorder is already running')
         self._dosbox.start(conf_file=conf_file)
-        threading.Thread(target=self._recorder.continuous_capture).start()
+        threading.Thread(target=self._recorder.start).start()
 
     def load_settings(self, settings: dict = None):
         """Loads a dict containing program settings.
@@ -73,6 +79,10 @@ class MortalKombat:
                 character_screen: str
                     Path to an image that signifies that players can start
                     to select characters.
+                p_save: float
+                    Probability of saving screenshots to file.
+                record_framerate: float
+                    The number of frames to capture per second.
         """
         if settings is None:
             with open('settings.yaml') as f:
@@ -80,6 +90,8 @@ class MortalKombat:
         self.capture_folder = abspath(settings['capture_folder'])
         self.join_screen = abspath(settings['join_screen'])
         self.character_screen = abspath(settings['character_screen'])
+        self.p_save = settings['p(save_image)']
+        self.record_framerate = settings['record_framerate']
 
     def join(self, player: int) -> None:
         """Start players that are controlled by this program."""

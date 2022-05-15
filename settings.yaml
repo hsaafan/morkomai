@@ -1,3 +1,5 @@
 capture_folder: '.captures'
 join_screen: 'images/join_screen.png'
 character_screen: 'images/intro.png'
+p(save_image): 1
+record_framerate: 24

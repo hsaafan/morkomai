@@ -1,9 +1,8 @@
-import yaml
-from mortalkombat import MortalKombat
 import time
 import random
-import string
-import recorder
+import yaml
+from .mortalkombat import MortalKombat
+from . import recorder
 
 with open('controls.yaml') as f:
     _controls = yaml.safe_load(f)
@@ -31,7 +30,7 @@ AI_STATES = (
 class AI:
     def __init__(self, game: MortalKombat, player: int,
                  character: int = 5, move_speed: float = 100,
-                 reporting: bool = True, captures: bool = True) -> None:
+                 reporting: bool = True) -> None:
         """Class used to control the AI.
 
         Parameters
@@ -53,9 +52,6 @@ class AI:
             The time in ms to wait after making a move. Defaults to 100.
         reporting: bool, optional
             If True, the AI outputs its actions to console. Defaults to True.
-        captures: bool, optional
-            If True, the AI will take screenshots periodically for training
-            purposes.
 
         Attributes
         ----------
@@ -67,9 +63,6 @@ class AI:
             The time in ms to wait after making a move.
         reporting: bool
             If True, the AI outputs its actions to console.
-        captures: bool, optional
-            If True, the AI will take screenshots periodically for training
-            purposes.
         prev_message: list[str, int]
             prev_message[0]: str
                 The previous message text.
@@ -95,7 +88,6 @@ class AI:
         self.player = player
         self.move_speed = move_speed
         self.reporting = reporting
-        self.captures = captures
         self.prev_message = ['', 0]
         self.character = character
         self.state = 0
@@ -130,31 +122,9 @@ class AI:
         control: str
             The control to send.
         """
-        if self.captures:
-            self.random_capture(0.1)
         self.report(control)
         self.game._dosbox.keystroke(CONTROLS[self.player][control])
         time.sleep(self.move_speed / 1000)
-
-    def random_capture(self, p: float, file_name: str = None):
-        """Roll a value in [0, 1], if its greater than p, take a screenshot.
-
-        Saves the screenshot to the capture folder set in settings.yaml.
-
-        Parameters
-        ----------
-        p: float
-            The probability of taking a screenshot.
-        file_name: str, optional
-            The name of the file, defaults to a random string of ascii letters
-            and digits starting with an underscore.
-        """
-        if not 0 <= p <= 1:
-            raise ValueError('Invalid probability')
-        if random.random() > (1 - p):
-            chars = string.ascii_letters + string.digits
-            file_name = ''.join(random.choice(chars) for i in range(15))
-            self.game.capture(f'{self.game.capture_folder}/_{file_name}.png')
 
     def report(self, msg: str) -> None:
         """Prints messages to console.
@@ -202,14 +172,14 @@ class AI:
     # State functions
     def wait_to_join(self) -> None:
         """Wait for the game to start to join the game"""
-        join_screen = recorder.open_image(self.game.join_screen)
-        char_select = recorder.open_image(self.game.character_screen)
+        join_screen = recorder.open_image_floats(self.game.join_screen)
+        char_select = recorder.open_image_floats(self.game.character_screen)
         status = 'Waiting to join game'
 
         while True:
             time.sleep(1)
             self.report(status)
-            current_screen = self.game._recorder.get_current_image()
+            current_screen = self.game._recorder.get_current_image_floats()
             at_join_screen = recorder.images_similar(current_screen,
                                                      join_screen, 0.1)
             at_char_screen = recorder.images_similar(current_screen,

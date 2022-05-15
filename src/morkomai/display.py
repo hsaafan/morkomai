@@ -1,5 +1,4 @@
 import subprocess
-import time
 
 
 class Display:
@@ -148,18 +147,6 @@ class Display:
         """
         self.check_still_running()
         self.call(f'xdotool keyup {key}')
-
-    def capture(self, file_path: str = '.captures/temp.png') -> None:
-        """Takes a screenshot of the display server using scrot.
-
-        Parameters
-        ----------
-        file_path: str, optional
-            The full path (including name and extension) to save the image to.
-            Defaults to .captures/temp.png in current working directory.
-        """
-        self.check_still_running()
-        self.call(f'scrot -o {file_path}')
 
     def stop(self) -> None:
         """Terminate the display server process."""

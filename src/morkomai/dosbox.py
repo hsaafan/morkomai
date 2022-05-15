@@ -1,7 +1,7 @@
 import subprocess
 import time
-from display import Display
 import psutil
+from .display import Display
 
 
 class DOSBox:
@@ -91,7 +91,6 @@ class DOSBox:
         self.send_string = self._display.send_string
         self.keydown = self._display.keydown
         self.keyup = self._display.keyup
-        self.capture = self._display.capture
 
     def fast_forward(self):
         self.keydown('ALT+F12')

@@ -1,6 +1,6 @@
-from mortalkombat import MortalKombat
 import threading
-from ai import AI
+from .mortalkombat import MortalKombat
+from .ai import AI
 
 
 def start_game(AI_1: bool = False, AI_2: bool = True,
