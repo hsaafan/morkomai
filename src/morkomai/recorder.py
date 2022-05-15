@@ -49,6 +49,8 @@ class ScreenRecorder:
         self._image_data = deque(maxlen=images_to_keep)
         self.is_running = False
         self._mss = None
+        self.count = 0
+        self.start_time = int(time.time())
 
     def start(self) -> None:
         """Take screen captures continuously."""
@@ -60,11 +62,14 @@ class ScreenRecorder:
         time.sleep(0.01)
         self._mss_monitor = self._mss.monitors[1]
         while True:
+            start = time.time()
             if not self.is_running:
                 break
             self._image_data.append(self.capture())
             self.random_capture(self.p_save)
-            time.sleep(self.delay)
+            remaining_delay = self.delay - (time.time() - start)
+            if remaining_delay > 0:
+                time.sleep(remaining_delay)
 
     def stop(self) -> None:
         """Signals the class to stop taking captures."""
@@ -108,8 +113,9 @@ class ScreenRecorder:
             The probability of taking a screenshot.
         """
         if random.random() > (1 - p):
-            file_name = int(time.time())
-            self.save_current_image(f'{file_name}.png')
+            # file_name = int(time.time())
+            self.count += 1
+            self.save_current_image(f'{self.start_time}-{self.count:09d}.png')
 
     def capture(self) -> ScreenShot:
         """Capture the display and save it to a file."""
