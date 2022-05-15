@@ -29,6 +29,9 @@ AI_STATES = (
 
 
 class AI:
+    ai_players = 0
+    first_player_state = 0
+
     def __init__(self, game: MortalKombat, player: int,
                  character: int = 5, move_speed: float = 100,
                  reporting: bool = True) -> None:
@@ -92,6 +95,7 @@ class AI:
         self.prev_message = ['', 0]
         self.character = character
         self.state = 0
+        AI.ai_players += 1
 
     def _get_character(self) -> int: return(self._character)
 
@@ -112,6 +116,8 @@ class AI:
             raise TypeError(err_msg)
         elif not 0 <= value <= max_index:
             raise ValueError(err_msg)
+        if self.player == 0:
+            AI.first_player_state = value
         self._state = value
     state = property(fget=_get_state, fset=_set_state)
 
@@ -179,6 +185,11 @@ class AI:
 
         while True:
             time.sleep(1)
+            if AI.ai_players > 1 and self.player > 0:
+                if AI.first_player_state != 0:
+                    break
+                else:
+                    continue
             self.report(status)
             current_screen = self.game._recorder.get_current_image_floats()
             at_join_screen = recorder.images_similar(current_screen,
@@ -188,11 +199,12 @@ class AI:
 
             if at_join_screen:
                 self.join()
-                status = 'Waiting for character select screen'
-            elif at_char_screen:
-                self.join()  # In case 2 AIs are playing
-                self.state = 1
+            if at_char_screen:
+                self.join()
                 break
+        if AI.ai_players > 1 and self.player > 0:
+            self.join()
+        self.state = 1
 
     def join(self) -> None:
         self.report('Joining game')
@@ -232,27 +244,33 @@ class AI:
                 else:
                     self.right()
                 position += 1
-            time.sleep(0.1)
+            time.sleep(0.5)
         self.low_kick()  # Confirm
         self.state = 2
 
     def wait_to_fight(self) -> None:
         """Wait for the fight prompt to appear and then to go away."""
-        template_img = recorder.open_image(self.game.fight_prompt).getdata()
-        # Only need red channel to compare yellow/red prompt
-        template_img = np.asarray(template_img)[:, 0] / 255
+        if not(AI.ai_players > 1 and self.player > 0):
+            template = recorder.open_image(self.game.fight_prompt).getdata()
+            # Only need red channel to compare yellow/red prompt
+            template_img = np.asarray(template)[:, 0] / 255
 
-        # Where there is color in the fight prompt template
-        template_ind = np.ceil(template_img).astype(bool)
-        template_img = template_img[template_ind]
-        img_pixels = np.sum(template_ind)
+            # Where there is color in the fight prompt template
+            template_ind = np.ceil(template_img).astype(bool)
+            template_img = template_img[template_ind]
+            img_pixels = np.sum(template_ind)
 
-        status = 'Waiting for fight prompt'
-        found_prompt = False
-        prompted = False
+            status = 'Waiting for fight prompt'
+            found_prompt = False
+            prompted = False
 
         while True:
-            time.sleep(0.05)
+            time.sleep(0.01)
+            if AI.ai_players > 1 and self.player > 0:
+                if AI.first_player_state == 3:
+                    break
+                else:
+                    continue
             self.report(status)
             current_screen = self.game._recorder.get_current_image().getdata()
             current_screen = np.asarray(current_screen)[:, 0] / 255
