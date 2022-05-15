@@ -1,6 +1,7 @@
 import time
 import random
 import yaml
+import numpy as np
 from .mortalkombat import MortalKombat
 from . import recorder
 
@@ -142,11 +143,11 @@ class AI:
                 print('\r' * 500, end='')
                 self.prev_message[1] += 1
                 print(f'Player {self.player + 1}: {msg} (Repeated '
-                      f'x{[self.prev_message[1]]})', end='')
+                      f'x{self.prev_message[1]})', end='')
             else:
                 print()
                 print(f'Player {self.player + 1}: {msg}', end='')
-            self.prev_message = [msg, 1]
+                self.prev_message = [msg, 1]
 
     # Game controls
     def idle(self) -> None: time.sleep(self.move_speed / 1000)
@@ -213,7 +214,7 @@ class AI:
                 6 -> Sonya Blade
         """
         self.report(f'Selecting {CHARACTERS[character]}')
-        position = (0, 5)[self.player]  # Where P1/P2 cursors start
+        position = (1, 5)[self.player]  # Where P1/P2 cursors start
         while position != character:
             if position > character:
                 if position == 2:
@@ -236,10 +237,39 @@ class AI:
         self.state = 2
 
     def wait_to_fight(self) -> None:
-        # TODO Lookout for the fight prompt
-        self.report('Waiting to start fight')
-        time.sleep(3)
-        self.report('Fight started')
+        """Wait for the fight prompt to appear and then to go away."""
+        template_img = recorder.open_image(self.game.fight_prompt).getdata()
+        # Only need red channel to compare yellow/red prompt
+        template_img = np.asarray(template_img)[:, 0] / 255
+
+        # Where there is color in the fight prompt template
+        template_ind = np.ceil(template_img).astype(bool)
+        template_img = template_img[template_ind]
+        img_pixels = np.sum(template_ind)
+
+        status = 'Waiting for fight prompt'
+        found_prompt = False
+        prompted = False
+
+        while True:
+            time.sleep(0.05)
+            self.report(status)
+            current_screen = self.game._recorder.get_current_image().getdata()
+            current_screen = np.asarray(current_screen)[:, 0] / 255
+
+            # Only compare pixels in the template image
+            diff = np.abs(template_img - current_screen[template_ind])
+            # Difference < x finds where colors are the same
+            # Divide by total pixels to find % pixels are the same
+            # 5% margin of error
+            found_prompt = 0.95 < np.sum(diff < 0.1) / img_pixels < 1.05
+
+            if found_prompt:
+                status = 'Waiting to start fight'
+                prompted = True
+            if not found_prompt and prompted:
+                self.report('Fight started')
+                break
         self.state = 3
 
     def fight(self) -> None: raise NotImplementedError

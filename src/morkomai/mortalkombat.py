@@ -32,6 +32,8 @@ class MortalKombat:
             The path of an image of the screen where players can join.
         character_select_screen: str
             The path of an image of the character select screen.
+        fight_prompt: str
+            Path to an image of the fight prompt.
         p_save: float
             The probability of saving captured images to file.
         record_framerate: float
@@ -79,6 +81,8 @@ class MortalKombat:
                 character_screen: str
                     Path to an image that signifies that players can start
                     to select characters.
+                fight_prompt: str
+                    Path to an image of the fight prompt.
                 p_save: float
                     Probability of saving screenshots to file.
                 record_framerate: float
@@ -90,6 +94,7 @@ class MortalKombat:
         self.capture_folder = abspath(settings['capture_folder'])
         self.join_screen = abspath(settings['join_screen'])
         self.character_screen = abspath(settings['character_screen'])
+        self.fight_prompt = abspath(settings['fight_prompt'])
         self.p_save = settings['p(save_image)']
         self.record_framerate = settings['record_framerate']
 
