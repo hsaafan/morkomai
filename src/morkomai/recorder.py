@@ -175,7 +175,7 @@ def images_similar(image1, image2, threshold: float = 0.05):
         The threshold for the similarity metric.
     """
     if image1.size != image2.size:
-        raise NotImplemented
+        raise NotImplementedError
     diff = image1 - image2
     rmse = (np.sum(diff ** 2) / image1.size) ** 0.5
     return(rmse < threshold)

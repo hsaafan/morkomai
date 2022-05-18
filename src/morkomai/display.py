@@ -37,7 +37,7 @@ class Display:
     # Methods
     def start(self) -> None:
         """Starts a display server using Xephyr."""
-        cmd = f'Xephyr :{self.display_id}'
+        cmd = f'Xephyr :{self.display_id} -screen 640x480'
         self._process = subprocess.Popen(cmd, shell=True)
 
     def check_still_running(self) -> None:
