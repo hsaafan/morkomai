@@ -1,10 +1,12 @@
 import time
 import random
 from collections import deque
+
 from PIL import Image
 import numpy as np
 import mss
 from mss.screenshot import ScreenShot
+
 from .display import Display
 
 
@@ -12,7 +14,6 @@ class ScreenRecorder:
     def __init__(self, display: Display,
                  capture_folder: str,
                  p_save: float = 0,
-                 record_framerate: float = 24,
                  images_to_keep: int = 3) -> None:
         """Class used to record the screen.
 
@@ -45,7 +46,6 @@ class ScreenRecorder:
         self.display = display
         self.capture_folder = capture_folder
         self.p_save = p_save
-        self.delay = 1 / record_framerate
         self._image_data = deque(maxlen=images_to_keep)
         self.is_running = False
         self._mss = None
@@ -61,15 +61,13 @@ class ScreenRecorder:
         self._mss = mss.mss(display=f':{self.display.display_id}')
         time.sleep(0.01)
         self._mss_monitor = self._mss.monitors[1]
-        while True:
-            start = time.time()
-            if not self.is_running:
-                break
-            self._image_data.append(self.capture())
-            self.random_capture(self.p_save)
-            remaining_delay = self.delay - (time.time() - start)
-            if remaining_delay > 0:
-                time.sleep(remaining_delay)
+
+    def step(self) -> Image.Image:
+        if not self.is_running:
+            raise RuntimeError('Recorder has not been started')
+        self._image_data.append(self.capture())
+        self.random_capture(self.p_save)
+        return(self.get_current_image())
 
     def stop(self) -> None:
         """Signals the class to stop taking captures."""
@@ -177,5 +175,5 @@ def images_similar(image1, image2, threshold: float = 0.05):
     if image1.size != image2.size:
         raise NotImplementedError
     diff = image1 - image2
-    rmse = (np.sum(diff ** 2) / image1.size) ** 0.5
+    rmse = ((diff ** 2).sum() / image1.size) ** 0.5
     return(rmse < threshold)

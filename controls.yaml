@@ -11,6 +11,7 @@ player1:
   low_punch: "n"
   high_kick: "i"
   low_kick: "m"
+  join: 'F1'
 player2:
   left: "KP_Left"
   right: "KP_Right"
@@ -21,3 +22,4 @@ player2:
   low_punch: "KP_1"
   high_kick: "KP_9"
   low_kick: "KP_3"
+  join: 'F2' 

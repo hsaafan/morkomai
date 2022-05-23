@@ -1,5 +1,4 @@
 from os.path import abspath
-import threading
 import yaml
 from .dosbox import DOSBox
 from .recorder import ScreenRecorder
@@ -46,7 +45,7 @@ class MortalKombat:
 
         if recorder is None:
             recorder = ScreenRecorder(dosbox._display, self.capture_folder,
-                                      self.p_save, self.record_framerate)
+                                      self.p_save)
         self._recorder = recorder
 
     def start(self, conf_file: str = 'dos.conf') -> None:
@@ -64,7 +63,7 @@ class MortalKombat:
         if self._recorder.is_running:
             raise RuntimeError('Recorder is already running')
         self._dosbox.start(conf_file=conf_file)
-        threading.Thread(target=self._recorder.start).start()
+        self._recorder.start()
 
     def load_settings(self, settings: dict = None):
         """Loads a dict containing program settings.
