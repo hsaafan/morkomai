@@ -2,5 +2,4 @@ capture_folder: '.captures'
 join_screen: 'images/join_screen.png'
 character_screen: 'images/intro.png'
 fight_prompt: 'images/fight_prompt.png'
-p(save_image): 1
-record_framerate: 10
+p(save_image): 0

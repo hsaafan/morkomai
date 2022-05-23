@@ -39,6 +39,12 @@ class Sprite:
         ----------
         data: np.ndarray
             The image data of shape (height, width, channels).
+        w: int
+            The sprite width in px.
+        h: int
+            The sprite height in px.
+        channels: int
+            The number of sprite channels.
         char: int
             The character id corresponding to the sprite.
         desc: str
@@ -48,16 +54,23 @@ class Sprite:
             A blank pixel is one which has a value of 0 in all channels.
         non_blanks: int
             The number of non blank pixels in the sprite.
-        colors: zip
-            A zipped iterable with the first value containing color arrays and
-            the second containing a count of how many times the color appears
-            in the sprite, and the third value containing the percentage of
-            the sprite (excluding blank pixels) that the color covers.
+        colors: list
+            A list of tuples with the first value in each tuple containing
+            a color array, count of how many times the color appears
+            in the sprite, the percentage of the sprite (excluding blank
+            pixels) that the color covers and the locations of the color on the
+            sprite.
+        channel_match: int
+            The channel to use for sprite matching.
+        id: int
+            The id of the sprite in the SpriteDB class.
         """
         w, h = img.size
         c = len(img.mode)
-        self.channels = c
         self.data = np.asarray(img.getdata()).reshape((h, w, c))
+        self.w = w
+        self.h = h
+        self.channels = c
         self.char = char
         self.desc = desc
         mask = np.ones((h, w), bool)
@@ -66,6 +79,7 @@ class Sprite:
         self.mask = mask
         self.non_blanks = np.sum(self.mask)
         self.extract_palette()
+        self.id = -1
 
     def extract_palette(self) -> None:
         """Store the colors and percent of sprite they take up."""
@@ -86,211 +100,6 @@ class Sprite:
         for col, count, p in zip(colors, counts, p_color):
             col_locs = np.nonzero(np.all(self.data == col, axis=-1))
             self.colors.append((col, count, p, col_locs))
-
-
-def sample_pixels(array: np.ndarray, ppr: int, ppc: int,
-                  x_offset: int = 0, y_offset: int = 0) -> list:
-    """Return a uniform set of values in an array.
-
-    Parameters
-    ----------
-    array: np.ndarray
-        The array to sample from.
-    ppr: int
-        Number of rows to take samples from.
-    ppc: int
-        Number of columns to take samples from.
-    x_offset: int, optional
-        Adds an offset to x coordinates in returned list.
-    y_offset: int, optional
-        Adds an offset to y coordinates in returned list.
-
-    Returns
-    -------
-    samples: list
-        A list containing the samples, each item in the list is a tuple made
-        of (x + x_offset, y + y_offset, array[y, x]).
-    """
-    height = array.shape[0]
-    width = array.shape[1]
-    x_gap = floor(width / (ppr + 1))
-    y_gap = floor(height / (ppc + 1))
-    row_indices = list(range(0, height, y_gap))
-    col_indices = list(range(0, width, x_gap))
-    samples = [(x + x_offset, y + y_offset, array[y, x])
-               for x in col_indices for y in row_indices]
-    return(samples)
-
-
-def find_color_matches(image: np.ndarray, color: np.ndarray,
-                       color_tol: int = 3) -> np.ndarray:
-    """Finds all pixels on image that matches a color within a tolerance.
-
-    Parameters
-    ----------
-    image: np.ndarray
-        The image to search through.
-    color: np.ndarray
-        The color to match to.
-    color_tol: int, optional
-        The tolerance of the color when matching the pixels. Defaults to 5.
-        For a color [220, 100, 85] with a tolerance of 5, matches are any
-        colors between [215, 195, 80] and [225, 105, 90].
-
-    Returns
-    -------
-    coords: tuple
-        A tuple of indices where matches occur. The size of the tuple is
-        equal to 1 less than the number of dimensions of the image.
-    """
-    above = np.all(image >= color - color_tol, axis=-1)
-    below = np.all(image <= color + color_tol, axis=-1)
-    coords = np.nonzero(above * below)
-    return(coords)
-
-
-def search_pixels(img: np.ndarray, pixel_order: list,
-                  char: int, timeout: float = 0.25) -> tuple:
-    start = time.time()
-    for x, y, c in pixel_order:
-        sprite_p_color = SpriteDB.p_color[char][c]
-        for k, _ in sprite_p_color:
-            # Search in descending order of most color coverage in sprite
-            sprite = SpriteDB.sprites[char][k]
-            sprite_match = find_img(img, (x, y), sprite)
-            if sprite_match is not None:
-                return(sprite_match)
-            if time.time() - start > timeout:
-                break
-
-
-def find_img(img: np.ndarray, coords: tuple, sprite: Sprite,
-             min_match: float = 0.95, color_tol: int = 3) -> tuple:
-    """Attempt to match a sprite to a location on an image.
-
-    The match starts at the given coordinates on the image and iterates
-    through the pixels on the sprite that match the color of the pixel. The
-    match box grows with each iteration until either the min_match is not
-    met, or the full sprite is matched.
-
-    Parameters
-    ----------
-    img: np.ndarray
-        The image to find the sprite in.
-    coords: tuple
-        The image pixel coordinates to match to. Values are (x, y).
-    sprite: Sprite
-        Sprite to attempt match on.
-    min_match: float, optional
-        The percent of pixels that need to be matched for the sprite to
-        match to the image. Defaults to 0.5. Setting this too low will
-        increase search time but setting it to high will not match when
-        characters are off screen or covered.
-    color_tol: int, optional
-        The tolerance of the color when matching the pixels. Defaults to 5.
-        For a color [220, 100, 85] with a tolerance of 5, matches are any
-        colors between [215, 195, 80] and [225, 105, 90].
-
-    Returns
-    -------
-    match: tuple | None
-        The bounding box on the image where the sprite is matched to. The
-        tuple contains the values x_left, y_top, x_right, y_bottom. If no
-        match is found, returns None.
-    """
-    sprite_h, sprite_w, sprite_channels = sprite.data.shape
-    _, _, channels = img.shape
-    if sprite_channels != channels:
-        raise TypeError('Number of channels do not match')
-    channel_match = sprite.channel_match
-
-    x, y = coords
-    for c, _, _, match_coords in sprite.colors:
-        above = (img[y, x] >= c - color_tol).all()
-        below = (img[y, x] <= c + color_tol).all()
-        if above and below:
-            break
-    sprite_x1, sprite_y1, sprite_x2, sprite_y2 = (0, 0, 0, 0)
-    crop_x1, crop_y1, crop_x2, crop_y2 = (0, 0, 0, 0)
-
-    for match_y, match_x in zip(match_coords[0], match_coords[1]):
-        rad = 1
-        prev_tiles = 0
-        prev_matches = 0
-        # Maximum radius to cover image
-        target_radius = sprite_w - match_x
-        if sprite_h - match_y > target_radius:
-            target_radius = sprite_h - match_y
-        if match_x > target_radius:
-            target_radius = match_x
-        if match_y > target_radius:
-            target_radius = match_y
-        # Crop the image to what the sprite bounding box would be
-        crop_x1 = x - match_x
-        crop_y1 = y - match_y
-        crop_x2 = crop_x1 + sprite_w
-        crop_y2 = crop_y1 + sprite_h
-        cropped_img = img[crop_y1:crop_y2, crop_x1:crop_x2]
-        psprite_x1 = None  # No previous check applied on sprite
-
-        while True:
-            # Sprite coordinates
-            sprite_x1 = match_x - rad
-            sprite_y1 = match_y - rad
-            sprite_x2 = match_x + rad
-            sprite_y2 = match_y + rad
-            if sprite_x1 < 0:
-                sprite_x1 = 0
-            if sprite_y1 < 0:
-                sprite_y1 = 0
-            if sprite_x2 > sprite_w:
-                sprite_x2 = sprite_w
-            if sprite_y2 > sprite_h:
-                sprite_y2 = sprite_h
-
-            # Get a cropped view of the sprite and image to compare
-            sprite_view = sprite.data[sprite_y1:sprite_y2, sprite_x1:sprite_x2,
-                                      channel_match]
-            image_view = cropped_img[sprite_y1:sprite_y2, sprite_x1:sprite_x2,
-                                     channel_match]
-            mask = sprite.mask[sprite_y1:sprite_y2, sprite_x1:sprite_x2]
-            # Mask all previous checked entries
-            if psprite_x1 is not None:
-                prev_l = psprite_x1 - sprite_x1
-                prev_t = psprite_y1 - sprite_y1
-                prev_r = sprite_x2 - psprite_x2
-                prev_b = sprite_y2 - psprite_y2
-                mask[prev_t:prev_b, prev_l:prev_r] = False
-            sprite_view = sprite_view[mask]
-            image_view = image_view[mask]
-            # Number of non-blank tiles checked so far
-            n_tiles = sprite_view.size + prev_tiles
-            # Compare
-            diff = np.abs(sprite_view - image_view)
-            # np.ndarray.co
-            new_matches = np.count_nonzero(diff < color_tol)
-            matches = prev_matches + new_matches
-            try:
-                match_pcnt = matches / n_tiles
-            except ZeroDivisionError:
-                match_pcnt = 1
-            if match_pcnt < min_match:
-                break  # Sprite doesn't match here, go to next coordinate
-            elif rad >= target_radius:
-                # The whole image has been checked and matches
-                return(sprite.id, (x - match_x,
-                                   y - match_y,
-                                   x - match_x + sprite_w,
-                                   y - match_y + sprite_h))
-            # Increase radius and store previous check values
-            rad *= 2
-            psprite_x1 = sprite_x1
-            psprite_y1 = sprite_y1
-            psprite_x2 = sprite_x2
-            psprite_y2 = sprite_y2
-            prev_matches = matches
-            prev_tiles = n_tiles
-    return(None)  # No matches on sprite
 
 
 class SpriteDB:
@@ -380,7 +189,8 @@ class SpriteDB:
 
 class SpriteMatcher:
     def __init__(self, p1_char: int, p2_char: int,
-                 ppr: int = 10, ppc: int = 10, timeout: float = 0.15) -> None:
+                 ppr: int = 10, ppc: int = 10,
+                 timeout: float = 0.15) -> None:
         """Used to match pixels on screen to sprites.
 
         Parameters
@@ -390,9 +200,9 @@ class SpriteMatcher:
         p2_char: int
             The character id of the second player.
         ppr: int, optional
-            Number of rows to take samples from, defaults to 3.
+            Number of rows to take samples from, defaults to 10.
         ppc: int, optional
-            Number of columns to take samples from, defaults to 3.
+            Number of columns to take samples from, defaults to 10.
         timeout: float, optional
             Seconds to wait per player before halting search, defaults to 0.15.
 
@@ -408,7 +218,7 @@ class SpriteMatcher:
         self.timeout = timeout
         self.change_chars(p1_char, p2_char)
 
-    def update_image(self, img: Image) -> None:
+    def update_image(self, img: Image.Image) -> None:
         """Update the stored image.
 
         Parameters
@@ -417,7 +227,8 @@ class SpriteMatcher:
             The image to store.
         """
         width, height = img.size
-        self.img = np.asarray(img.getdata()).reshape((height, width, 3))
+        c = len(img.mode)
+        self.img = np.asarray(img.getdata()).reshape((height, width, c))
 
     def change_chars(self, p1_char: int, p2_char: int) -> None:
         """Change character ids.
@@ -476,7 +287,7 @@ class SpriteMatcher:
                 bounding_boxes = [self.match(pixels, self._p2_char)]
         return(bounding_boxes)
 
-    def match(self, pixels: list, char: int, color_tol: int = 3) -> tuple:
+    def match(self, pixels: list, char: int, color_tol: int = 5) -> tuple:
         """Match one of the character sprites to a location in the image.
 
         Parameters
@@ -502,6 +313,7 @@ class SpriteMatcher:
             a tuple with values x_left, y_top, x_right, y_bottom.
         """
         pixel_order = []
+        min_x, min_y, max_x, max_y = (1e6, 1e6, 0, 0)
         for x, y, color in pixels:
             # Order sampled sprites by how rare they are in the character
             # sprites
@@ -514,6 +326,14 @@ class SpriteMatcher:
                 continue  # Color doesn't match any in character palette
             count = SpriteDB.color_counts[char][c]
             new_pixel = (x, y, c)
+            if x < min_x:
+                min_x = x
+            elif x > max_x:
+                max_x = x
+            if y < min_y:
+                min_y = y
+            elif y > max_y:
+                max_y = y
             i = 0
             while True:
                 if i >= len(pixel_order):
@@ -524,7 +344,9 @@ class SpriteMatcher:
                     break
                 else:
                     i += 1
-        match = search_pixels(self.img, pixel_order, char, self.timeout)
+        min_size = (max_x - min_x, max_y - min_y)
+        match = search_pixels(self.img, pixel_order, char,
+                              self.timeout, min_size)
         return(match)
 
 
@@ -593,7 +415,27 @@ def load_all_sprites(root_path: str = 'images/sprites') -> None:
 def detect_current_scene(scene: Image.Image,
                          join_screen: np.ndarray,
                          char_select: np.ndarray,
-                         fight_prompt: np.ndarray):
+                         fight_prompt: np.ndarray) -> int:
+    """Match an image to a preset scene.
+
+    Parameters
+    ----------
+    scene: PIL.Image.Image
+        The image to match.
+    join_screen: np.ndarray
+        The startup screen at which players can start joining. It should be an
+        np.ndarray of floats.
+    char_select: np.ndarray
+        The character select screen. It should be an np.ndarray of floats.
+    fight_prompt: np.ndarray
+        An image containing only the fight prompt at where it should appear on
+        screen. The image should be an np.ndarray of ints in [0, 255].
+
+    Returns
+    -------
+    scene: int
+        The scene that was detected. See vision.SCENES.
+    """
     scene_array = np.asarray(scene.getdata())
     if at_fight_prompt(scene_array, fight_prompt):
         scene = SCENES['FIGHT_PROMPT']
@@ -609,6 +451,22 @@ def detect_current_scene(scene: Image.Image,
 
 
 def at_fight_prompt(scene: np.ndarray, fight_prompt: np.ndarray) -> bool:
+    """Is there a fight prompt on the current screen.
+
+    Parameters
+    ----------
+    scene: np.ndarray
+        The image to match. The image should be an np.ndarray of ints in
+        [0, 255].
+    fight_prompt: np.ndarray
+        An image containing only the fight prompt at where it should appear on
+        screen. The image should be an np.ndarray of ints in [0, 255].
+
+    Returns
+    -------
+    at_fight_prompt: bool
+        Is there a fight prompt on the current screen.
+    """
     indices = np.ceil(fight_prompt).astype(bool)  # Only non-blank pixels
     red_channel = scene[:, 0] / 255
     diff = np.abs(fight_prompt[indices] - red_channel[indices])
@@ -616,4 +474,251 @@ def at_fight_prompt(scene: np.ndarray, fight_prompt: np.ndarray) -> bool:
 
 
 def get_health_bars(img: Image.Image):
+    """Get the current health of characters based on an image of the scene."""
     return(100, 100)
+
+
+def sample_pixels(array: np.ndarray, ppr: int, ppc: int,
+                  x_offset: int = 0, y_offset: int = 0) -> list:
+    """Return a uniform set of values in an array.
+
+    Parameters
+    ----------
+    array: np.ndarray
+        The array to sample from.
+    ppr: int
+        Number of rows to take samples from.
+    ppc: int
+        Number of columns to take samples from.
+    x_offset: int, optional
+        Adds an offset to x coordinates in returned list. Defaults to 0.
+    y_offset: int, optional
+        Adds an offset to y coordinates in returned list. Defaults to 0.
+
+    Returns
+    -------
+    samples: list
+        A list containing the samples, each item in the list is a tuple made
+        of (x + x_offset, y + y_offset, array[y, x]).
+    """
+    height = array.shape[0]
+    width = array.shape[1]
+    x_gap = floor(width / (ppr + 1))
+    y_gap = floor(height / (ppc + 1))
+    row_indices = list(range(0, height, y_gap))
+    col_indices = list(range(0, width, x_gap))
+    samples = [(x + x_offset, y + y_offset, array[y, x])
+               for x in col_indices for y in row_indices]
+    return(samples)
+
+
+def find_color_matches(image: np.ndarray, color: np.ndarray,
+                       color_tol: int = 5) -> np.ndarray:
+    """Finds all pixels on image that matches a color within a tolerance.
+
+    Parameters
+    ----------
+    image: np.ndarray
+        The image to search through.
+    color: np.ndarray
+        The color to match to.
+    color_tol: int, optional
+        The tolerance of the color when matching the pixels. Defaults to 5.
+        For a color [220, 100, 85] with a tolerance of 5, matches are any
+        colors between [215, 195, 80] and [225, 105, 90].
+
+    Returns
+    -------
+    coords: tuple
+        A tuple of indices where matches occur. The size of the tuple is
+        equal to 1 less than the number of dimensions of the image.
+    """
+    above = (image >= color - color_tol).all(axis=-1)
+    below = (image <= color + color_tol).all(axis=-1)
+    coords = np.nonzero(above * below)
+    return(coords)
+
+
+def search_pixels(img: np.ndarray, pixels: list, char: int,
+                  timeout: float = 0.25,
+                  min_size: tuple = None,
+                  min_size_pcnt: float = 0.5) -> tuple:
+    """Search through a set of pixels in order and match to a sprite.
+
+    Parameters
+    ----------
+    img: np.ndarray
+        The image to search through.
+    pixels: list
+        A list of tuples each containing an x coordinate, y coordinate, and
+        a color index.
+    char: int
+        The character whose sprites to search through. See ai.CHARACTERS.
+    timeout: float, optional
+        The maximum time in seconds to search. Defaults to 0.25.
+    min_size: tuple, optional
+        A tuple containing the minimum width and height of sprites to search
+        through. Defaults to None which searches all sprites.
+    min_size_pcnt: float, optional
+        A modifier on the min_size tuple values. Defaults to 0.5.
+
+    Returns
+    -------
+    match: tuple | None
+        The sprite that was matched. The first value in the tuple is the sprite
+        id while the second is a tuple of the bounding box (x1, y1, x2, y2).
+        Returns None if no match was found.
+    """
+    start = time.time()
+    for x, y, c in pixels:
+        sprite_p_color = SpriteDB.p_color[char][c]
+        for k, _ in sprite_p_color:
+            # Search in descending order of most color coverage in sprite
+            sprite = SpriteDB.sprites[char][k]
+            if min_size is not None:
+                if sprite.w < min_size_pcnt * min_size[0]:
+                    continue
+                elif sprite.h < min_size_pcnt * min_size[1]:
+                    continue
+            time_left = timeout - (time.time() - start)
+            sprite_match = find_img(img, (x, y), sprite, timeout=time_left)
+            if sprite_match is not None:
+                return(sprite_match)
+            if time.time() - start > timeout:
+                break
+
+
+def find_img(img: np.ndarray, coords: tuple, sprite: Sprite,
+             min_match: float = 0.9,
+             color_tol: int = 5,
+             timeout: float = 0.25) -> tuple:
+    """Attempt to match a sprite to a location on an image.
+
+    The match starts at the given coordinates on the image and iterates
+    through the pixels on the sprite that match the color of the pixel. The
+    match box grows with each iteration until either the min_match is not
+    met, or the full sprite is matched.
+
+    Parameters
+    ----------
+    img: np.ndarray
+        The image to find the sprite in.
+    coords: tuple
+        The image pixel coordinates to match to. Values are (x, y).
+    sprite: Sprite
+        Sprite to attempt match on.
+    min_match: float, optional
+        The percent of pixels that need to be matched for the sprite to
+        match to the image. Defaults to 0.9. Setting this too low will
+        increase search time but setting it to high will not match when
+        characters are covered.
+    color_tol: int, optional
+        The tolerance of the color when matching the pixels. Defaults to 5.
+        For a color [220, 100, 85] with a tolerance of 5, matches are any
+        colors between [215, 195, 80] and [225, 105, 90].
+    timeout: float, optional
+        The maximum time in seconds to search. Defaults to 0.25.
+
+    Returns
+    -------
+    match: tuple | None
+        The bounding box on the image where the sprite is matched to. The
+        tuple contains the values x_left, y_top, x_right, y_bottom. If no
+        match is found, returns None.
+    """
+    sprite_h, sprite_w, sprite_channels = sprite.data.shape
+    _, _, channels = img.shape
+    if sprite_channels != channels:
+        raise TypeError('Number of channels do not match')
+    channel_match = sprite.channel_match
+
+    start_time = time.time()
+    x, y = coords
+    for c, _, _, match_coords in sprite.colors:
+        above = (img[y, x] >= c - color_tol).all()
+        below = (img[y, x] <= c + color_tol).all()
+        if above and below:
+            break
+    sprite_x1, sprite_y1, sprite_x2, sprite_y2 = (0, 0, 0, 0)
+    crop_x1, crop_y1, crop_x2, crop_y2 = (0, 0, 0, 0)
+
+    for match_y, match_x in zip(match_coords[0], match_coords[1]):
+        if time.time() - start_time > timeout:
+            break
+        rad = 1
+        prev_tiles = 0
+        prev_matches = 0
+        # Maximum radius to cover image
+        target_radius = sprite_w - match_x
+        if sprite_h - match_y > target_radius:
+            target_radius = sprite_h - match_y
+        if match_x > target_radius:
+            target_radius = match_x
+        if match_y > target_radius:
+            target_radius = match_y
+        # Crop the image to what the sprite bounding box would be
+        crop_x1 = x - match_x
+        crop_y1 = y - match_y
+        crop_x2 = crop_x1 + sprite_w
+        crop_y2 = crop_y1 + sprite_h
+        cropped_img = img[crop_y1:crop_y2, crop_x1:crop_x2]
+        psprite_x1 = None  # No previous check applied on sprite
+
+        while True:
+            # Sprite coordinates
+            sprite_x1 = match_x - rad
+            sprite_y1 = match_y - rad
+            sprite_x2 = match_x + rad
+            sprite_y2 = match_y + rad
+            if sprite_x1 < 0:
+                sprite_x1 = 0
+            if sprite_y1 < 0:
+                sprite_y1 = 0
+            if sprite_x2 > sprite_w:
+                sprite_x2 = sprite_w
+            if sprite_y2 > sprite_h:
+                sprite_y2 = sprite_h
+
+            # Get a cropped view of the sprite and image to compare
+            sprite_view = sprite.data[sprite_y1:sprite_y2, sprite_x1:sprite_x2,
+                                      channel_match]
+            image_view = cropped_img[sprite_y1:sprite_y2, sprite_x1:sprite_x2,
+                                     channel_match]
+            mask = sprite.mask[sprite_y1:sprite_y2, sprite_x1:sprite_x2]
+            # Mask all previous checked entries
+            if psprite_x1 is not None:
+                prev_l = psprite_x1 - sprite_x1
+                prev_t = psprite_y1 - sprite_y1
+                prev_r = sprite_x2 - psprite_x2
+                prev_b = sprite_y2 - psprite_y2
+                mask[prev_t:prev_b, prev_l:prev_r] = False
+            sprite_view = sprite_view[mask]
+            image_view = image_view[mask]
+            # Number of non-blank tiles checked so far
+            n_tiles = sprite_view.size + prev_tiles
+            # Compare
+            diff = np.abs(sprite_view - image_view)
+            # np.ndarray.co
+            new_matches = np.count_nonzero(diff < color_tol)
+            matches = prev_matches + new_matches
+            try:
+                match_pcnt = matches / n_tiles
+            except ZeroDivisionError:
+                match_pcnt = 1
+            if match_pcnt < min_match:
+                break  # Sprite doesn't match here, go to next coordinate
+            elif rad >= target_radius:
+                # The whole image has been checked and matches
+                return(sprite.id, (x - match_x,
+                                   y - match_y,
+                                   x - match_x + sprite_w,
+                                   y - match_y + sprite_h))
+            # Increase radius and store previous check values
+            rad *= 2
+            psprite_x1 = sprite_x1
+            psprite_y1 = sprite_y1
+            psprite_x2 = sprite_x2
+            psprite_y2 = sprite_y2
+            prev_matches = matches
+            prev_tiles = n_tiles
+    return(None)  # No matches on sprite

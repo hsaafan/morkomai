@@ -35,8 +35,6 @@ class MortalKombat:
             Path to an image of the fight prompt.
         p_save: float
             The probability of saving captured images to file.
-        record_framerate: float
-            The number of frames to capture per second.
         """
         if dosbox is None:
             dosbox = DOSBox()
@@ -84,8 +82,6 @@ class MortalKombat:
                     Path to an image of the fight prompt.
                 p_save: float
                     Probability of saving screenshots to file.
-                record_framerate: float
-                    The number of frames to capture per second.
         """
         if settings is None:
             with open('settings.yaml') as f:
@@ -95,14 +91,6 @@ class MortalKombat:
         self.character_screen = abspath(settings['character_screen'])
         self.fight_prompt = abspath(settings['fight_prompt'])
         self.p_save = settings['p(save_image)']
-        self.record_framerate = settings['record_framerate']
-
-    def join(self, player: int) -> None:
-        """Start players that are controlled by this program."""
-        if player == 0:
-            self._dosbox.keystroke('F1')
-        if player == 1:
-            self._dosbox.keystroke('F2')
 
     def stop(self) -> None:
         """Stop Mortal Kombat and the dosbox application."""

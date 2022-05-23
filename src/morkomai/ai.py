@@ -26,42 +26,27 @@ AI_STATES = {
 
 
 class AI:
-    ai_players = 0
-    first_player_state = 0
-
     def __init__(self, controller, player: int,
-                 character: int = 5, move_speed: float = 100,
-                 reporting: bool = True) -> None:
+                 character: int = 5, reporting: bool = True) -> None:
         """Class used to control the AI.
 
         Parameters
         ----------
-        game: MortalKombat
-            The application to add the AI to.
+        controller: Controller
+            The controller to attach the AI to.
         player: int
             The player to control using the AI (Player 1: 0, Player 2: 1).
         character: int, optional
-            The character to choose. Defaults to 5 (Sub-Zero).
-                0 -> Johnny Cage
-                1 -> Kano
-                2 -> Raiden
-                3 -> Liu Kang
-                4 -> Scorpion
-                5 -> Sub-Zero
-                6 -> Sonya Blade
-        move_speed: float, optional
-            The time in ms to wait after making a move. Defaults to 100.
+            The character to choose. Default is 5 (SubZero). See ai.CHARACTERS.
         reporting: bool, optional
             If True, the AI outputs its actions to console. Defaults to True.
 
         Attributes
         ----------
-        game: MortalKombat
-            The application that the AI is playing in.
+        controller: Controller
+            The controller that the AI is attached to.
         player: int
             The player the AI is controlling (Player 1: 0, Player 2: 1).
-        move_speed: float
-            The time in ms to wait after making a move.
         reporting: bool
             If True, the AI outputs its actions to console.
         prev_message: list[str, int]
@@ -70,39 +55,37 @@ class AI:
             prev_message[1]: int
                 The number of times the message has been repeated.
         character: int
-            The character that the AI plays.
-                0 -> Johnny Cage
-                1 -> Kano
-                2 -> Raiden
-                3 -> Liu Kang
-                4 -> Scorpion
-                5 -> Sub-Zero
-                6 -> Sonya Blade
+            The character that the AI plays. See ai.CHARACTERS.
+        game_info: list
+            List with player 1 info at index 0 and player 2 info at index 2.
+            The player information is a list ordered as follows.
+                Health: float
+                    Player health from 0-100.
+                Sprite ID: int
+                    The current sprite of the player.
+                Bounding Box: tuple
+                    The bounding box of the player sprite (x1, y1, x2, y2).
         state: int
-            The current state of the AI
-                0 -> WAITING_TO_JOIN
-                1 -> SELECT_CHARACTER
-                2 -> INTERMISSION
-                3 -> FIGHTING
+            The current state of the AI. See ai.AI_STATES.
         """
         self.controller = controller
         self.player = player
-        self.move_speed = move_speed
         self.reporting = reporting
         self.prev_message = ['', 0]
         self.character = character
+        self.game_info = []
         self.state = AI_STATES['OTHER']
-        AI.ai_players += 1
 
     def _get_character(self) -> int: return(self._character)
 
-    def _set_character(self, value: int):
+    def _set_character(self, value: int) -> None:
         if type(value) is not int:
             raise TypeError('Character must be an integer in [0, 6]')
         elif not 0 <= value <= 6:
             raise ValueError('Character must be an integer in [0, 6]')
         self._character = value
-    character = property(fget=_get_character, fset=_set_character)
+    character = property(fget=_get_character, fset=_set_character,
+                         doc="The character that the AI plays.")
 
     def _get_state(self) -> int: return(self._state)
 
@@ -116,7 +99,8 @@ class AI:
         if self.player == 0:
             AI.first_player_state = value
         self._state = value
-    state = property(fget=_get_state, fset=_set_state)
+    state = property(fget=_get_state, fset=_set_state,
+                     doc="The current state of the AI.")
 
     def _send_control(self, control: str) -> None:
         """Sends controls to dosbox, keystrokes depend on controls.yaml file.
@@ -152,7 +136,7 @@ class AI:
                 self.prev_message = [msg, 1]
 
     # Game controls
-    def idle(self) -> None: time.sleep(self.move_speed / 1000)
+    def idle(self) -> None: self._send_control('idle')
 
     def left(self) -> None: self._send_control('left')
 
@@ -180,14 +164,7 @@ class AI:
         Parameters
         ----------
         character: int
-            The index of the character to select.
-                0 -> Johnny Cage
-                1 -> Kano
-                2 -> Raiden
-                3 -> Liu Kang
-                4 -> Scorpion
-                5 -> Sub-Zero
-                6 -> Sonya Blade
+            The index of the character to select. See ai.CHARACTERS.
         """
         self.report(f'Selecting {CHARACTERS[character]}')
         position = (1, 5)[self.player]  # Where P1/P2 cursors start
@@ -214,6 +191,7 @@ class AI:
     def fight(self) -> None: raise NotImplementedError
 
     def step(self) -> None:
+        """Take an action based on AI state."""
         if self.state == AI_STATES['OTHER']:
             pass
         elif self.state == AI_STATES['JOINING']:
@@ -229,6 +207,7 @@ class AI:
 
     # Fight Tactics
     def random_moves(self) -> None:
+        """AI will pick random controls when playing."""
         choice = random.choice(list(range(18)))
         if choice == 0:
             self.left()
@@ -251,5 +230,19 @@ class AI:
         else:
             self.idle()
 
-    def update_info(self, info):
-        pass
+    def update_info(self, info: list) -> None:
+        """Update the AI with game state information.
+
+        Parameters
+        ----------
+        info: list
+            List with player 1 info at index 0 and player 2 info at index 2.
+            The player information is a list ordered as follows.
+                Health: float
+                    Player health from 0-100.
+                Sprite ID: int
+                    The current sprite of the player.
+                Bounding Box: tuple
+                    The bounding box of the player sprite (x1, y1, x2, y2).
+        """
+        self.game_info = info

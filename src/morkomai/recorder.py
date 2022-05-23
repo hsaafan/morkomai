@@ -25,8 +25,6 @@ class ScreenRecorder:
             The folder to store captures in.
         p_save: float, optional
             The probability of saving captured images to file.
-        delay: float, optional
-            The number of screenshots to take per second. Defaults to 24.
         images_to_keep: int, optional
             The number of images to keep available. Defaults to 3.
 
@@ -40,8 +38,6 @@ class ScreenRecorder:
             The folder to store captures in.
         p_save: float
             The probability of saving captured images to file.
-        delay: float
-            The delay in seconds between screen captures.
         """
         self.display = display
         self.capture_folder = capture_folder
@@ -63,6 +59,13 @@ class ScreenRecorder:
         self._mss_monitor = self._mss.monitors[1]
 
     def step(self) -> Image.Image:
+        """Step the recorder by grabbing the screen.
+        
+        Returns
+        -------
+        scene: PIL.Image.Image
+            The current game screen.
+        """
         if not self.is_running:
             raise RuntimeError('Recorder has not been started')
         self._image_data.append(self.capture())
@@ -73,8 +76,14 @@ class ScreenRecorder:
         """Signals the class to stop taking captures."""
         self._running = False
 
-    def get_current_image(self) -> Image:
-        """Returns the last captured image."""
+    def get_current_image(self) -> Image.Image:
+        """Returns the last captured image.
+
+        Returns
+        -------
+        scene: PIL.Image.Image
+            The last captured game screen.
+        """
         try:
             sct = self._image_data[0]
             image = Image.frombytes("RGB", sct.size, sct.bgra, "raw", "BGRX")
@@ -83,7 +92,13 @@ class ScreenRecorder:
         return(image)
 
     def get_current_image_floats(self) -> np.ndarray:
-        """Converts the last image into a float array and returns it."""
+        """Converts the last image into a float array and returns it.
+
+        Returns
+        -------
+        scene: np.ndarray
+            The last captured game screen.
+        """
         image = self.get_current_image()
         if image is not None:
             return(convert_to_floats(image))
@@ -127,6 +142,11 @@ def open_image(path: str) -> Image:
     ----------
     path: str
         The path of the image to open.
+
+    Returns
+    -------
+    image: PIL.Image.Image
+        The image from the path.
     """
     image = Image.open(path)
     return(image)
@@ -139,6 +159,11 @@ def convert_to_floats(image: Image) -> np.ndarray:
     ----------
     image: Image
         The PIL image to convert.
+
+    Returns
+    -------
+    image: np.ndarray
+        The converted image.
     """
     image = image.convert('L')
     width, height = image.size
@@ -154,23 +179,34 @@ def open_image_floats(path: str) -> np.ndarray:
     ----------
     path: str
         The path of the image to open.
+
+    Returns
+    -------
+    image: np.ndarray
+        The converted image.
     """
     image = open_image(path)
     image_data = convert_to_floats(image)
     return(image_data)
 
 
-def images_similar(image1, image2, threshold: float = 0.05):
+def images_similar(image1: np.ndarray, image2: np.ndarray,
+                   threshold: float = 0.05) -> bool:
     """Check if two images are similar
 
     Parameters
     ----------
-    image1
+    image1: np.ndarray
         The first image
-    image2
+    image2: np.ndarray
         The second image
     threshold: float
         The threshold for the similarity metric.
+
+    Returns
+    -------
+    images_similar: bool
+        Are the two images similar.
     """
     if image1.size != image2.size:
         raise NotImplementedError
