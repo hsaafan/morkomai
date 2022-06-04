@@ -10,16 +10,16 @@
 \title{\vspace{-3cm}CS 686 Project Proposal: Mortal Kombat AI}
 \begin{document}
 \maketitle
-Historically, games have provided a simple and controlled setting for showcasing AI techniques.
+Historically, games have provided a controlled setting for showcasing AI techniques.
 This includes games like chess \cite{hsu2002behind}, checkers \cite{schaeffer2007checkers}, Go \cite{silver2017mastering}, and more recently video games such as Star Craft II \cite{vinyals2019grandmaster}.
 Mortal Kombat is a 1992 DOS fighting game developed by Midway games.
 It is easy to learn with only 9 controls but difficult to master.
 The game includes an arcade ladder mode and a 2 player vs mode with 7 playable characters.
 The aim of this project is to create an AI capable of beating the arcade ladder.
 
-The first challenge is to determine what is happening on screen.
-This is easy for humans but for AI, it requires the application of computer vision techniques such as object detection \cite{liu2020deep} and action recognition\cite{zhang2019comprehensive}.
-YOLOv5 \cite{glennjocher2022} is an efficient object detection library that would be useful for this real time application.  
+The first challenge is to determine what is happening on screen which would require the application of computer vision techniques such as object detection \cite{liu2020deep} and action recognition\cite{zhang2019comprehensive}.
+YOLOv5 \cite{glennjocher2022} is an efficient object detection library that would be useful for this real time application.
+Alternatively, since the game uses sprites, search techniques could be used to match pixels on screen to a sprite library.
 
 The second challenge is to be able perform combos.
 To do this, the AI must be aware of past actions and plan ahead as well as take into account character positioning.
@@ -40,13 +40,12 @@ Self play was used in AlphaGo Zero \cite{silver2017mastering} with great success
 Vinyals et al. noted that using self play exclusively led to ``chas[ing] cycles in [the] strategy space" \cite{vinyals2019grandmaster}.
 Another method that would prevent cyclic strategies is training on the in game ladder mode.
 The last option is to have a human play against the AI.
-This is more of a novelty as it requires an experienced player with a large time commitment.
 
 Other tasks include detecting the current scene to determine what set of actions to take.
 For example, selecting a character on the character select screen, resting between matches, and fighting.
-The start and end of fights can be detected using the same character recognition mentioned above and a similarity metric can be used for static scenes such as character selection. 
+The start and end of fights can be detected using the same character recognition mentioned above and a similarity metric for images can be used for static scenes such as character selection. 
 In addition to these challenges, a framework must also be constructed to allow the AI to interact with the game.
-Depending on resource availability, the hardest/easiest challenge is to design the AI to run in real time.
+Depending on resource availability, the easiest/hardest challenge is to design the AI efficiently to run in real time.
 
 \newpage
 \bibliographystyle{IEEEtraN}
