@@ -6,7 +6,8 @@ import numpy as np
 from PIL import ImageDraw, Image
 
 from .mortalkombat import MortalKombat
-from .ai import AI, AI_STATES
+from .enumerations import AI_STATES, SCENES, START_POSITIONS
+from .ai import AI
 from . import vision
 from .recorder import open_image, open_image_floats
 
@@ -62,7 +63,7 @@ class Controller:
         in_fight: bool
             Flag to mark whether the game is in a fight.
         last_scene: int
-            The previous detected scene. See vision.SCENES.
+            The previous detected scene. See SCENES.
         ai_players: list
             A list containing all ai players.
         """
@@ -80,12 +81,12 @@ class Controller:
             'fight_prompt': np.asarray(fight_prompt.getdata())[:, 0] / 255
         }
         self.vision = vision.SpriteMatcher(0, 0, timeout=0.25)
-        self.vbounds_p1 = vision.START_POSITIONS[0]
-        self.vbounds_p2 = vision.START_POSITIONS[1]
+        self.vbounds_p1 = START_POSITIONS[0]
+        self.vbounds_p2 = START_POSITIONS[1]
         self._vision_override = False
         self._fight_vision_override = False
         self.in_fight = False
-        self.last_scene = vision.SCENES['OTHER']
+        self.last_scene = SCENES['OTHER']
         # AI
         self.ai_players = []
 
@@ -205,7 +206,7 @@ class Controller:
         Parameters
         ----------
         state: int
-            The state to set. See ai.AI_STATES.
+            The state to set. See AI_STATES.
         """
         for player in self.ai_players:
             player.state = state
@@ -219,11 +220,11 @@ class Controller:
             An image of the scene.
         """
         scene = vision.detect_current_scene(scene, **self._scene_templates)
-        if scene == vision.SCENES['INTRODUCTION'] != self.last_scene:
+        if scene == SCENES['INTRODUCTION'] != self.last_scene:
             self.set_AI_states(AI_STATES['JOINING'])
-        elif scene == vision.SCENES['CHARACTER_SELECT'] != self.last_scene:
+        elif scene == SCENES['CHARACTER_SELECT'] != self.last_scene:
             self.set_AI_states(AI_STATES['SELECT_CHARACTER'])
-        elif scene == vision.SCENES['FIGHT_PROMPT'] != self.last_scene:
+        elif scene == SCENES['FIGHT_PROMPT'] != self.last_scene:
             self.in_fight = True
             self.set_AI_states(AI_STATES['FIGHTING'])
         self.last_scene = scene

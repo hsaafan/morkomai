@@ -1,28 +1,11 @@
-import time
 import random
 import yaml
+
+from .enumerations import AI_STATES, CHARACTERS
 
 with open('controls.yaml') as f:
     _controls = yaml.safe_load(f)
     CONTROLS = [_controls["player1"], _controls["player2"]]
-
-CHARACTERS = (
-    'Johnny Cage',
-    'Kano',
-    'Raiden',
-    'Liu Kang',
-    'Scorpion',
-    'Sub-Zero',
-    'Sonya Blade'
-)
-
-AI_STATES = {
-    'OTHER': 0,
-    'JOINING': 1,
-    'SELECT_CHARACTER': 2,
-    'INTERMISSION': 3,
-    'FIGHTING': 4,
-}
 
 
 class AI:
@@ -37,7 +20,7 @@ class AI:
         player: int
             The player to control using the AI (Player 1: 0, Player 2: 1).
         character: int, optional
-            The character to choose. Default is 5 (SubZero). See ai.CHARACTERS.
+            The character to choose. Default is 5 (SubZero). See CHARACTERS.
         reporting: bool, optional
             If True, the AI outputs its actions to console. Defaults to True.
 
@@ -55,7 +38,7 @@ class AI:
             prev_message[1]: int
                 The number of times the message has been repeated.
         character: int
-            The character that the AI plays. See ai.CHARACTERS.
+            The character that the AI plays. See CHARACTERS.
         game_info: list
             List with player 1 info at index 0 and player 2 info at index 2.
             The player information is a list ordered as follows.
@@ -66,7 +49,7 @@ class AI:
                 Bounding Box: tuple
                     The bounding box of the player sprite (x1, y1, x2, y2).
         state: int
-            The current state of the AI. See ai.AI_STATES.
+            The current state of the AI. See AI_STATES.
         """
         self.controller = controller
         self.player = player
@@ -164,7 +147,7 @@ class AI:
         Parameters
         ----------
         character: int
-            The index of the character to select. See ai.CHARACTERS.
+            The index of the character to select. See CHARACTERS.
         """
         self.report(f'Selecting {CHARACTERS[character]}')
         position = (1, 5)[self.player]  # Where P1/P2 cursors start

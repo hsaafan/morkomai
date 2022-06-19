@@ -6,25 +6,7 @@ import numpy as np
 from PIL import Image
 
 from .recorder import convert_to_floats, images_similar
-
-
-START_POSITIONS = (         # Where players start each round
-    (190, 220, 280, 340),
-    (350, 220, 440, 340)
-)
-
-HEALTH_BAR_POSITIONS = (
-    (181, 163, 309, 171),
-    (331, 163, 459, 171)
-)
-
-SCENES = {
-    'OTHER': 0,
-    'INTRODUCTION': 1,
-    'CHARACTER_SELECT': 2,
-    'FIGHT_PROMPT': 3,
-    'GAME_OVER': 4
-}
+from .enumerations import HEALTH_BAR_POSITIONS, SCENES
 
 
 class Sprite:
@@ -439,7 +421,7 @@ def detect_current_scene(scene: Image.Image,
     Returns
     -------
     scene: int
-        The scene that was detected. See vision.SCENES.
+        The scene that was detected. See SCENES.
     """
     scene_array = np.asarray(scene.getdata())
     if at_fight_prompt(scene_array, fight_prompt):
@@ -595,7 +577,7 @@ def search_pixels(img: np.ndarray, pixels: list, char: int,
         A list of tuples each containing an x coordinate, y coordinate, and
         a color index.
     char: int
-        The character whose sprites to search through. See ai.CHARACTERS.
+        The character whose sprites to search through. See CHARACTERS.
     timeout: float, optional
         The maximum time in seconds to search. Defaults to 0.25.
     min_size: tuple, optional
