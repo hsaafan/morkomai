@@ -13,6 +13,11 @@ START_POSITIONS = (         # Where players start each round
     (350, 220, 440, 340)
 )
 
+HEALTH_BAR_POSITIONS = (
+    (181, 163, 309, 171),
+    (331, 163, 459, 171)
+)
+
 SCENES = {
     'OTHER': 0,
     'INTRODUCTION': 1,
@@ -473,9 +478,46 @@ def at_fight_prompt(scene: np.ndarray, fight_prompt: np.ndarray) -> bool:
     return(0.95 < np.sum(diff < 0.1) / diff.size < 1.05)
 
 
-def get_health_bars(img: Image.Image):
-    """Get the current health of characters based on an image of the scene."""
-    return(100, 100)
+def get_health_bars(scene: np.ndarray) -> tuple:
+    """Get the current health of characters based on an image of the scene.
+
+    Parameters
+    ----------
+    scene: np.ndarray
+        The current fight scene. The image should be an np.ndarray of ints in
+        [0, 255].
+
+    Returns
+    -------
+    p1_health: float
+        Health of first player in [0, 1].
+    p2_health: float
+        Health of second player in [0, 1].
+    """
+    p1_pos, p2_pos = HEALTH_BAR_POSITIONS
+
+    p1_bar = scene[p1_pos[1]:p1_pos[3], p1_pos[0]:p1_pos[2]][:, :, 1]
+    p1_bar = np.flip(p1_bar)
+    p2_bar = scene[p2_pos[1]:p2_pos[3], p2_pos[0]:p2_pos[2]][:, :, 1]
+
+    bar_height, bar_length = p1_bar.shape
+    p1_first, p2_first = (bar_length, bar_length)
+    for i in range(bar_height):
+        # Iterate through rows and find first green pixels
+        # Goes through all rows since name can cover up part of the bar
+        p1_pixel = next((idx for idx, g in np.ndenumerate(p1_bar[i])
+                         if 160 < g < 170), (bar_length, ))
+        p2_pixel = next((idx for idx, g in np.ndenumerate(p2_bar[i])
+                         if 160 < g < 170), (bar_length, ))
+
+        if p1_pixel[0] < p1_first:
+            p1_first = p1_pixel[0]
+        if p2_pixel[0] < p2_first:
+            p2_first = p2_pixel[0]
+
+    p1_health = (bar_length - p1_first) / bar_length
+    p2_health = (bar_length - p2_first) / bar_length
+    return(p1_health, p2_health)
 
 
 def sample_pixels(array: np.ndarray, ppr: int, ppc: int,
