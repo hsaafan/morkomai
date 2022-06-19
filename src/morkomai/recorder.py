@@ -167,7 +167,7 @@ def convert_to_floats(image: Image) -> np.ndarray:
     """
     image = image.convert('L')
     width, height = image.size
-    image_data = np.asarray(image.getdata()).reshape((width, height))
+    image_data = np.asarray(image.getdata()).reshape((height, width))
     image_data = image_data.astype('float16') / 255
     return(image_data)
 
