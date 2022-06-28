@@ -2,22 +2,28 @@ import subprocess
 
 
 class Display:
-    def __init__(self, display_id: int = 13) -> None:
-        """Display class used to create a display server using Xephyr.
+    """Display class used to create a display server using Xephyr.
 
-        Parameters
-        ----------
-        display_id: int, optional
-            An id used to identify the display, defaults to 13.
+    Attributes
+    ----------
+    display_id: int
+        An id used to identify the display.
+    resolution: tuple
+        Size of Xephyr display.
+    is_running: bool
+        True if display server is still running.
 
-        Attributes
-        ----------
-        display_id: int
-            An id used to identify the display.
-        is_running: bool
-            True if display server is still running.
-        """
+    Parameters
+    ----------
+    display_id: int, optional
+        An id used to identify the display. Defaults to 13.
+    resolution: tuple, optional
+        Size of Xephyr display to create. Defaults to (640, 480).
+    """
+    def __init__(self, display_id: int = 13,
+                 resolution: tuple = (640, 480)) -> None:
         self._display_id = display_id
+        self.resolution = resolution
         self._process = None
         self._preface = f'DISPLAY=:{self.display_id} '
 
@@ -37,7 +43,8 @@ class Display:
     # Methods
     def start(self) -> None:
         """Starts a display server using Xephyr."""
-        cmd = f'Xephyr :{self.display_id} -screen 640x480'
+        w, h = self.resolution
+        cmd = f'Xephyr :{self.display_id} -screen {w}x{h}'
         self._process = subprocess.Popen(cmd, shell=True)
 
     def check_still_running(self) -> None:
@@ -102,6 +109,21 @@ class Display:
         """
         self.check_still_running()
         self.call(f'xdotool key --delay {time_held} "{key}"')
+
+    def toggle_key(self, key_tuple: tuple) -> None:
+        """Toggles key press on display server using xdotool key.
+
+        Parameters
+        ----------
+        key_tuple: tuple
+            0 (str): The key to toggle, consult xdotool for the list of keys.
+            1 (bool): True to press down, False to press up.
+        """
+        key, press_down = key_tuple
+        if press_down:
+            self.keydown(key)
+        else:
+            self.keyup(key)
 
     def send_string(self, string: str, press_enter: bool = False) -> None:
         """Send typed string to display server using xdotool type command.
