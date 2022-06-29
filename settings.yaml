@@ -1,5 +1,11 @@
 capture_folder: '.captures'
+save_captures: False
 join_screen: 'images/join_screen.png'
 character_screen: 'images/intro.png'
+continue_screen: 'images/continue.png'
 fight_prompt: 'images/fight_prompt.png'
+timer_image: 'images/timer.png'
 p(save_image): 0
+sprite_folder: 'images/sprites'
+nameplate_folder: 'images/names'
+model_folder: 'models'
