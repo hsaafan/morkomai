@@ -11,34 +11,38 @@ from .display import Display
 
 
 class ScreenRecorder:
+    """Class used to record the screen.
+
+    Attributes
+    ----------
+    display: Display
+        The display that is being recorded.
+    capture_folder: str
+        The folder to store captures in.
+    p_save: float
+        The probability of saving captured images to file.
+    is_running: bool
+        True if currently recording screen.
+    count: int
+        Keeps track of how many random captures have been taken.
+    start_time: int
+        The time that the object was created.
+
+    Parameters
+    ----------
+    display: Display
+        The display to record.
+    capture_folder: str
+        The folder to store captures in.
+    p_save: float, optional
+        The probability of saving captured images to file.
+    images_to_keep: int, optional
+        The number of images to keep available. Defaults to 3.
+    """
     def __init__(self, display: Display,
                  capture_folder: str,
                  p_save: float = 0,
                  images_to_keep: int = 3) -> None:
-        """Class used to record the screen.
-
-        Parameters
-        ----------
-        display: Display
-            The display to record.
-        capture_folder: str
-            The folder to store captures in.
-        p_save: float, optional
-            The probability of saving captured images to file.
-        images_to_keep: int, optional
-            The number of images to keep available. Defaults to 3.
-
-        Attributes
-        ----------
-        display: Display
-            The display that is being recorded.
-        is_running: bool
-            True if currently recording screen.
-        capture_folder: str
-            The folder to store captures in.
-        p_save: float
-            The probability of saving captured images to file.
-        """
         self.display = display
         self.capture_folder = capture_folder
         self.p_save = p_save
@@ -49,32 +53,28 @@ class ScreenRecorder:
         self.start_time = int(time.time())
 
     def start(self) -> None:
-        """Take screen captures continuously."""
+        """Start the recorder."""
         self.is_running = True
         # Create mss screenshot object and attach it to display
         if not self.display.is_running:
-            raise RuntimeError('Display is not running, recorder cannot start')
+            raise RuntimeError('Display not running, recorder cannot start.')
         self._mss = mss.mss(display=f':{self.display.display_id}')
         time.sleep(0.01)
         self._mss_monitor = self._mss.monitors[1]
 
     def step(self) -> Image.Image:
         """Step the recorder by grabbing the screen.
-        
+
         Returns
         -------
         scene: PIL.Image.Image
             The current game screen.
         """
         if not self.is_running:
-            raise RuntimeError('Recorder has not been started')
+            raise RuntimeError('Recorder has not been started.')
         self._image_data.append(self.capture())
         self.random_capture(self.p_save)
         return(self.get_current_image())
-
-    def stop(self) -> None:
-        """Signals the class to stop taking captures."""
-        self._running = False
 
     def get_current_image(self) -> Image.Image:
         """Returns the last captured image.
@@ -90,18 +90,6 @@ class ScreenRecorder:
         except TypeError:
             image = None
         return(image)
-
-    def get_current_image_floats(self) -> np.ndarray:
-        """Converts the last image into a float array and returns it.
-
-        Returns
-        -------
-        scene: np.ndarray
-            The last captured game screen.
-        """
-        image = self.get_current_image()
-        if image is not None:
-            return(convert_to_floats(image))
 
     def save_current_image(self, filename: str) -> None:
         """Save the last captured image in the captures folder.
@@ -126,16 +114,21 @@ class ScreenRecorder:
             The probability of taking a screenshot.
         """
         if random.random() > (1 - p):
-            # file_name = int(time.time())
             self.count += 1
             self.save_current_image(f'{self.start_time}-{self.count:09d}.png')
 
     def capture(self) -> ScreenShot:
-        """Capture the display and save it to a file."""
+        """Capture the display.
+
+        Returns
+        -------
+        sct: mss.screenshot.ScreenShot
+            The captured screen data.
+        """
         return(self._mss.grab(self._mss_monitor))
 
 
-def open_image(path: str) -> Image:
+def open_image(path: str) -> Image.Image:
     """Opens an image as a PIL Image object.
 
     Parameters
@@ -152,12 +145,45 @@ def open_image(path: str) -> Image:
     return(image)
 
 
-def convert_to_floats(image: Image) -> np.ndarray:
+def convert_to_array(image: Image.Image) -> np.ndarray:
+    """Converts a PIL Image object into a numpy array.
+
+    Parameters
+    ----------
+    image: PIL.Image.Image
+        The PIL image to convert.
+
+    Returns
+    -------
+    image: np.ndarray
+        The converted image.
+    """
+    return(np.asarray(image))
+
+
+def open_image_array(path: str) -> np.ndarray:
+    """Opens an image as a numpy ndarray object.
+
+    Parameters
+    ----------
+    path: str
+        The path of the image to open.
+
+    Returns
+    -------
+    image: np.ndarray
+        The image from the path.
+    """
+    image = open_image(path)
+    return(convert_to_array(image))
+
+
+def convert_to_floats(image: Image.Image) -> np.ndarray:
     """Converts a PIL Image object into a numpy array of floats in [0, 1].
 
     Parameters
     ----------
-    image: Image
+    image: PIL.Image.Image
         The PIL image to convert.
 
     Returns
@@ -192,7 +218,7 @@ def open_image_floats(path: str) -> np.ndarray:
 
 def images_similar(image1: np.ndarray, image2: np.ndarray,
                    threshold: float = 0.05) -> bool:
-    """Check if two images are similar
+    """Check if two images are similar using RMSE.
 
     Parameters
     ----------
