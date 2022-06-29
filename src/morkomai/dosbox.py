@@ -5,22 +5,22 @@ from .display import Display
 
 
 class DOSBox:
+    """Class used to run dosbox application.
+
+    Attributes
+    ----------
+    pid: str
+        The pid of the dosbox GUI.
+    is_running: bool
+        True if dosbox application is still running.
+
+    Parameters
+    ----------
+    display: Display, optional
+        The display server object to run dosbox on. If none are passed, a
+        new display server will be started with the default display id.
+    """
     def __init__(self, display: Display = None) -> None:
-        """Class used to run dosbox application.
-
-        Parameters
-        ----------
-        display: Display, optional
-            The display server object to run dosbox on. If none are passed, a
-            new display server will be started with the default display id.
-
-        Attributes
-        ----------
-        pid: str
-            The pid of the dosbox GUI.
-        is_running: bool
-            True if dosbox application is still running.
-        """
         if display is None:
             display = Display()
         self._shell = None
@@ -85,12 +85,16 @@ class DOSBox:
         """Kill the dosbox GUI."""
         self._display.call(f'kill -9 {self.pid}')
 
-    def _inherit_keys(self):
+    def _inherit_keys(self) -> None:
         """Inherit the key methods from the display server"""
         self.keystroke = self._display.keystroke
+        self.toggle_key = self._display.toggle_key
         self.send_string = self._display.send_string
         self.keydown = self._display.keydown
         self.keyup = self._display.keyup
 
-    def fast_forward(self):
+    def fast_forward(self) -> None:
         self.keydown('ALT+F12')
+
+    def stop_fast_forward(self) -> None:
+        self.keyup('ALT+F12')
