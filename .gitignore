@@ -1,5 +1,7 @@
 dosprogs/
 *__pycache__/
 venv/
+.venv/
 .captures/
-.vscode/launch.json
+.vscode/
+models/[0-9]*.chkpt
