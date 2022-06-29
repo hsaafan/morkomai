@@ -1,66 +1,68 @@
 import os
 import time
 from math import floor
+import pickle
+from os.path import abspath
 
 import numpy as np
 from PIL import Image
 
-from .recorder import convert_to_floats, images_similar
-from .enumerations import HEALTH_BAR_POSITIONS, SCENES
+from .recorder import convert_to_floats, convert_to_array, images_similar
+from .recorder import open_image_array
+from .globals import *
 
 
 class Sprite:
+    """Class for sprite images.
+
+    Attributes
+    ----------
+    data: np.ndarray
+        The image data of shape (height, width, channels).
+    w: int
+        The sprite width in px.
+    h: int
+        The sprite height in px.
+    channels: int
+        The number of sprite channels.
+    char: int
+        The character id corresponding to the sprite.
+    desc: str
+        A description of the sprite.
+    mask: np.ndarray
+        A mask that is True for all non-blank pixels and False otherwise.
+        A blank pixel is one which has a value of 0 in all channels.
+    non_blanks: int
+        The number of non blank pixels in the sprite.
+    channel_match: int
+        The channel to use for sprite matching.
+    colors: list
+        A list of tuples with the first value in each tuple containing
+        a color array, count of how many times the color appears
+        in the sprite, the percentage of the sprite (excluding blank
+        pixels) that the color covers and the locations of the color on the
+        sprite.
+    id: int
+        The id of the sprite in the SpriteDB class.
+
+    Parameters
+    ----------
+    img: PIL.Image.Image | numpy.ndarray
+        The sprite image.
+    char: int
+        The character id corresponding to the sprite.
+    desc: str, optional
+        A description of the sprite, defaults to an empty string.
+    """
     def __init__(self, img: Image.Image, char: int, desc: str = '') -> None:
-        """Class for sprite images.
-
-        Parameters
-        ----------
-        img: PIL.Image.Image
-            The sprite image.
-        char: int
-            The character id corresponding to the sprite.
-        desc: str, optional
-            A description of the sprite, defaults to an empty string.
-
-        Attributes
-        ----------
-        data: np.ndarray
-            The image data of shape (height, width, channels).
-        w: int
-            The sprite width in px.
-        h: int
-            The sprite height in px.
-        channels: int
-            The number of sprite channels.
-        char: int
-            The character id corresponding to the sprite.
-        desc: str
-            A description of the sprite.
-        mask: np.ndarray
-            A mask that is True for all non-blank pixels and False otherwise.
-            A blank pixel is one which has a value of 0 in all channels.
-        non_blanks: int
-            The number of non blank pixels in the sprite.
-        colors: list
-            A list of tuples with the first value in each tuple containing
-            a color array, count of how many times the color appears
-            in the sprite, the percentage of the sprite (excluding blank
-            pixels) that the color covers and the locations of the color on the
-            sprite.
-        channel_match: int
-            The channel to use for sprite matching.
-        id: int
-            The id of the sprite in the SpriteDB class.
-        """
-        w, h = img.size
-        c = len(img.mode)
-        self.data = np.asarray(img.getdata()).reshape((h, w, c))
-        self.w = w
-        self.h = h
-        self.channels = c
+        if isinstance(img, np.ndarray):
+            self.data = img
+        else:
+            self.data = convert_to_array(img)
+        self.h, self.w, self.channels = self.data.shape
         self.char = char
         self.desc = desc
-        mask = np.ones((h, w), bool)
+        mask = np.ones((self.h, self.w), bool)
         blanks = np.all(self.data == 0, axis=-1)
         mask[blanks] = False
         self.mask = mask
@@ -70,8 +72,8 @@ class Sprite:
 
     def extract_palette(self) -> None:
         """Store the colors and percent of sprite they take up."""
-        colors, counts = np.unique(self.data.reshape((-1, self.channels)),
-                                   return_counts=True, axis=0)
+        masked_data = self.data[self.mask].reshape((-1, self.channels))
+        colors, counts = np.unique(masked_data, return_counts=True, axis=0)
         # Find the channel with the most unique values and use that to attempt
         # sprite matching
         channel_uniques = 0
@@ -113,31 +115,24 @@ class SpriteDB:
         of the sprite that each color covers (excluding blank pixels).
         Indices are character > color_index > sprite_id
     """
-    sprites = [[] for _ in range(16)]
-    palettes = [[] for _ in range(16)]
-    color_counts = [[] for _ in range(16)]
-    p_color = [[] for _ in range(16)]
+    sprites = [[] for _ in range(len(CHARACTER_IDS))]
+    palettes = [[] for _ in range(len(CHARACTER_IDS))]
+    color_counts = [[] for _ in range(len(CHARACTER_IDS))]
+    p_color = [[] for _ in range(len(CHARACTER_IDS))]
 
-    def add_sprite(sprite: Sprite) -> int:
-        """Add a new sprite to the class attributes
+    def add_sprite(sprite: Sprite) -> None:
+        """Add a new sprite to the class attributes.
 
         Parameters
         ----------
         sprite: Sprite
             The sprite to add.
-
-        Returns
-        -------
-        sprite_id: int
-            The id of the sprite that was added.
         """
         SpriteDB.sprites[sprite.char].append(sprite)
-        sprite_id = len(SpriteDB.sprites[sprite.char]) - 1
-        SpriteDB._extend_palette(sprite, sprite_id)
-        sprite.id = sprite_id
-        return(sprite_id)
+        sprite.id = len(SpriteDB.sprites[sprite.char]) - 1
+        SpriteDB._extend_palette(sprite)
 
-    def _extend_palette(sprite: Sprite, sprite_id: int) -> None:
+    def _extend_palette(sprite: Sprite) -> None:
         """Adds the sprite colors to the palettes, color_counts and p_color
         attributes.
 
@@ -145,12 +140,10 @@ class SpriteDB:
         ----------
         sprite: Sprite
             The sprite object to extract the colors from.
-        sprite_id: int
-            The id of the sprite to extract the colors from.
         """
         char = sprite.char
         for color, count, p_color, _ in sprite.colors:
-            s_count = (sprite_id, p_color)
+            s_count = (sprite.id, p_color)
             # Find color in the character palette, if its not there, add it
             try:
                 col_index = np.where(np.all(SpriteDB.palettes[char] == color,
@@ -175,34 +168,39 @@ class SpriteDB:
 
 
 class SpriteMatcher:
+    """Used to match pixels on screen to sprites.
+
+    Attributes
+    ----------
+    timeout: float
+        Seconds to wait per player before halting search.
+    env_palette: list
+        A palette containing a list of colors used in the scene. These are only
+        the colors that appear on the edges behind the players. This is to
+        prevent taking any extra colors which might mess with the matching.
+    img: np.ndarray
+        The image to match sprites to. Shape is (height, width, channels).
+
+    Parameters
+    ----------
+    p1_char: int
+        The character id of the first player. See CHARACTER_IDS.
+    p2_char: int
+        The character id of the second player. See CHARACTER_IDS.
+    ppr: int, optional
+        Number of samples to take from each row, defaults to 45.
+    ppc: int, optional
+        Number of samples to take from each column, defaults to 15.
+    timeout: float, optional
+        Seconds to wait per player before halting search, defaults to 0.15.
+    """
     def __init__(self, p1_char: int, p2_char: int,
-                 ppr: int = 10, ppc: int = 10,
+                 ppr: int = 45, ppc: int = 15,
                  timeout: float = 0.15) -> None:
-        """Used to match pixels on screen to sprites.
-
-        Parameters
-        ----------
-        p1_char: int
-            The character id of the first player.
-        p2_char: int
-            The character id of the second player.
-        ppr: int, optional
-            Number of rows to take samples from, defaults to 10.
-        ppc: int, optional
-            Number of columns to take samples from, defaults to 10.
-        timeout: float, optional
-            Seconds to wait per player before halting search, defaults to 0.15.
-
-        Attributes
-        ----------
-        img: np.ndarray
-            The image to match sprites to. Shape is (height, width, channels).
-        timeout: float
-            Seconds to wait per player before halting search.
-        """
         self._ppr = ppr
         self._ppc = ppc
         self.timeout = timeout
+        self.env_palette = []
         self.change_chars(p1_char, p2_char)
 
     def update_image(self, img: Image.Image) -> None:
@@ -213,9 +211,7 @@ class SpriteMatcher:
         img: PIL.Image.Image
             The image to store.
         """
-        width, height = img.size
-        c = len(img.mode)
-        self.img = np.asarray(img.getdata()).reshape((height, width, c))
+        self.img = convert_to_array(img)
 
     def change_chars(self, p1_char: int, p2_char: int) -> None:
         """Change character ids.
@@ -229,7 +225,7 @@ class SpriteMatcher:
         """
         self._p1_char = p1_char
         if p1_char == p2_char:
-            self._p2_char = p2_char + 7
+            self._p2_char = CHARACTER_IDS[f'{CHARACTERS[p2_char]} (Alternate)']
         else:
             self._p2_char = p2_char
 
@@ -267,6 +263,8 @@ class SpriteMatcher:
                 l, t, r, b = bounds
                 bounded_img = self.img[t:b, l:r]
             pixels = sample_pixels(bounded_img, self._ppr, self._ppc, l, t)
+            mid = int(len(pixels) / 2)
+            pixels = pixels[mid:] + pixels[:mid]
 
             if only_p1:
                 bounding_boxes = [self.match(pixels, self._p1_char)]
@@ -274,7 +272,7 @@ class SpriteMatcher:
                 bounding_boxes = [self.match(pixels, self._p2_char)]
         return(bounding_boxes)
 
-    def match(self, pixels: list, char: int, color_tol: int = 5) -> tuple:
+    def match(self, pixels: list, char: int, col_tol: int = 5) -> tuple:
         """Match one of the character sprites to a location in the image.
 
         Parameters
@@ -286,7 +284,7 @@ class SpriteMatcher:
             in the third position.
         char: int
             The character id whose sprites are being checked.
-        color_tol: int, optional
+        col_tol: int, optional
             The tolerance of the color when matching the pixels. Defaults to 5.
             For a color [220, 100, 85] with a tolerance of 5, matches are any
             colors between [215, 195, 80] and [225, 105, 90].
@@ -302,15 +300,15 @@ class SpriteMatcher:
         pixel_order = []
         min_x, min_y, max_x, max_y = (1e6, 1e6, 0, 0)
         for x, y, color in pixels:
-            # Order sampled sprites by how rare they are in the character
+            # Order sampled pixels by how rare they are in the character
             # sprites
             if np.all(color == 0):
                 continue  # Dont match empty spots (black in RGB)
-            try:
-                c = find_color_matches(SpriteDB.palettes[char],
-                                       color, color_tol)[0][0]
-            except IndexError:
-                continue  # Color doesn't match any in character palette
+            if color_in_palette(color, self.env_palette, col_tol) is not None:
+                continue  # Dont match pixels in environment palette
+            c = color_in_palette(color, SpriteDB.palettes[char], col_tol)
+            if c is None:
+                continue
             count = SpriteDB.color_counts[char][c]
             new_pixel = (x, y, c)
             if x < min_x:
@@ -335,6 +333,10 @@ class SpriteMatcher:
         match = search_pixels(self.img, pixel_order, char,
                               self.timeout, min_size)
         return(match)
+
+    def update_environment_palette(self) -> None:
+        """Updates the environment palette."""
+        self.env_palette = get_environment_palette(self.img)
 
 
 def load_sprite(filename: str, char: int, desc:  str = '') -> None:
@@ -379,41 +381,106 @@ def load_sprite_folder(folder: str, char: int) -> None:
             load_sprite(full_path, char, filename[:-4])
 
 
-def load_all_sprites(root_path: str = 'images/sprites') -> None:
-    """Loads all sprites (naming must be default convention)
+def load_all_sprites(root_path: str = 'images/sprites',
+                     quiet: bool = False) -> None:
+    """Loads all sprites (naming must be default convention).
+
+    Parameters
+    ----------
+    root_path: str
+        The root folder that contains all sprite folders.
+    quiet: bool
+        If False will print a message when called. Defaults to False.
+    """
+    if not quiet:
+        print('Loading and preprocessing sprites.')
+    names = ['Cage', 'Kano', 'Raiden', 'Kang', 'Scorpion', 'Subzero', 'Sonya']
+    folders = []
+    for x in names:
+        folders.append(f'{root_path}/{x}')
+    folders.append(f'{root_path}/Goro')
+    folders.append(f'{root_path}/Tsung')
+    for x in names:
+        folders.append(f'{root_path}/{x}/AltSkin')
+    for i, folder_path in enumerate(folders):
+        load_sprite_folder(folder_path, i)
+    load_shang_tsung()
+
+
+def load_shang_tsung() -> None:
+    """Copies all character sprites to Shang Tsung.
+
+    Includes all playbale character sprites into Shang Tsungs SpriteDB entry
+    since he can transform into them. This must only be called after loading
+    all other sprites.
+    """
+    for char, chard_id in CHARACTER_IDS.items():
+        if char == 'Goro' or char == 'Shang Tsung':
+            continue
+        for sprite in SpriteDB.sprites[chard_id]:
+            img = sprite.data
+            desc = sprite.desc
+            shang_sprite = Sprite(img, CHARACTER_IDS['Shang Tsung'], desc)
+            SpriteDB.add_sprite(shang_sprite)
+
+
+def build_spritedb(root_path: str = 'images/sprites') -> None:
+    """Loads sprites from disk and pickles the processed data.
 
     Parameters
     ----------
     root_path: str
         The root folder that contains all sprite folders.
     """
-    names = ['Cage', 'Kano', 'Raiden', 'Kang', 'Scorpion', 'Subzero', 'Sonya']
-    folders = []
-    for x in names:
-        folders.append(f'{root_path}/{x}')
-    for x in names:
-        folders.append(f'{root_path}/{x}/AltSkin')
-    folders.append(f'{root_path}/Goro')
-    folders.append(f'{root_path}/Tsung')
-    for i, folder_path in enumerate(folders):
-        load_sprite_folder(folder_path, i)
+    load_all_sprites(root_path)
+    with open(f'{abspath(root_path)}/{DB_PICKLE_FILENAME}', 'wb') as f:
+        db_data = {
+            'sprites': SpriteDB.sprites,
+            'palettes': SpriteDB.palettes,
+            'color_counts': SpriteDB.color_counts,
+            'p_color': SpriteDB.p_color
+        }
+        pickle.dump(db_data, f)
 
 
-def detect_current_scene(scene: Image.Image,
+def load_spritedb(root_path: str = 'images/sprites') -> None:
+    """Load preprocessed sprite data or if not available, raw images from disk.
+
+    Parameters
+    ----------
+    root_path: str
+        The root folder that contains all sprite folders.
+    """
+    try:
+        with open(f'{abspath(root_path)}/{DB_PICKLE_FILENAME}', 'rb') as f:
+            db_data = pickle.load(f)
+        SpriteDB.sprites = db_data['sprites']
+        SpriteDB.palettes = db_data['palettes']
+        SpriteDB.color_counts = db_data['color_counts']
+        SpriteDB.p_color = db_data['p_color']
+    except FileNotFoundError:
+        build_spritedb(root_path)
+
+
+def detect_current_scene(scene_img: Image.Image,
                          join_screen: np.ndarray,
                          char_select: np.ndarray,
+                         continue_screen: np.ndarray,
                          fight_prompt: np.ndarray) -> int:
     """Match an image to a preset scene.
 
     Parameters
     ----------
-    scene: PIL.Image.Image
+    scene_img: PIL.Image.Image
         The image to match.
     join_screen: np.ndarray
         The startup screen at which players can start joining. It should be an
         np.ndarray of floats.
     char_select: np.ndarray
         The character select screen. It should be an np.ndarray of floats.
+    continue_screen: np.ndarray
+        The continue screen after losing a fight. It should be an np.ndarray
+        of floats.
     fight_prompt: np.ndarray
         An image containing only the fight prompt at where it should appear on
         screen. The image should be an np.ndarray of ints in [0, 255].
@@ -423,15 +490,18 @@ def detect_current_scene(scene: Image.Image,
     scene: int
         The scene that was detected. See SCENES.
     """
-    scene_array = np.asarray(scene.getdata())
-    if at_fight_prompt(scene_array, fight_prompt):
+    c_pos = CONTINUE_POSITION
+    if at_fight_prompt(convert_to_array(scene_img), fight_prompt):
         scene = SCENES['FIGHT_PROMPT']
     else:
-        scene_array = convert_to_floats(scene)
+        scene_array = convert_to_floats(scene_img)
         if images_similar(scene_array, join_screen, 0.1):
             scene = SCENES['INTRODUCTION']
         elif images_similar(scene_array, char_select, 0.1):
             scene = SCENES['CHARACTER_SELECT']
+        elif images_similar(scene_array[c_pos[1]:c_pos[3], c_pos[0]:c_pos[2]],
+                            continue_screen, 0.1):
+            scene = SCENES['INTRODUCTION']  # Same actions needed as in intro
         else:
             scene = SCENES['OTHER']
     return(scene)
@@ -446,8 +516,9 @@ def at_fight_prompt(scene: np.ndarray, fight_prompt: np.ndarray) -> bool:
         The image to match. The image should be an np.ndarray of ints in
         [0, 255].
     fight_prompt: np.ndarray
-        An image containing only the fight prompt at where it should appear on
-        screen. The image should be an np.ndarray of ints in [0, 255].
+        An image containing only the first channel of the fight prompt at where
+        it should appear on screen. The image should be an np.ndarray of floats
+        in [0, 1].
 
     Returns
     -------
@@ -455,12 +526,130 @@ def at_fight_prompt(scene: np.ndarray, fight_prompt: np.ndarray) -> bool:
         Is there a fight prompt on the current screen.
     """
     indices = np.ceil(fight_prompt).astype(bool)  # Only non-blank pixels
-    red_channel = scene[:, 0] / 255
-    diff = np.abs(fight_prompt[indices] - red_channel[indices])
-    return(0.95 < np.sum(diff < 0.1) / diff.size < 1.05)
+    red_channel = scene[:, :, 0] / 255
+    return(images_similar(fight_prompt[indices], red_channel[indices]))
 
 
 def get_health_bars(scene: np.ndarray) -> tuple:
+    """Get the health bar images from the scene.
+
+    Parameters
+    ----------
+    scene: np.ndarray
+        The current fight scene. The image should be an np.ndarray of ints in
+        [0, 255].
+
+    Returns
+    -------
+    p1_bar: np.ndarray
+        The health bar of the first player.
+    p2_bar: np.ndarray
+        The health bar of the second player.
+    """
+    p1_pos, p2_pos = HEALTH_BAR_POSITIONS
+    p1_bar = scene[p1_pos[1]:p1_pos[3], p1_pos[0]:p1_pos[2]]
+    p2_bar = scene[p2_pos[1]:p2_pos[3], p2_pos[0]:p2_pos[2]]
+    return(p1_bar, p2_bar)
+
+
+def detect_character(scene: np.ndarray, player: int,
+                     nameplate_folder: str = 'images/names') -> int:
+    """Detect the character based on the health bar name.
+
+    Parameters
+    ----------
+    scene: np.ndarray
+        The current fight scene. The image should be an np.ndarray of ints in
+        [0, 255].
+    player: int
+        Which player to detect the character for.
+    nameplate_folder: str
+        The folder containing the nameplates. Defaults to 'images/names'.
+
+    Returns
+    -------
+    character: str
+        The detected character. See CHARACTERS.
+    """
+    health_bar = get_health_bars(scene)[player][:, :, 1]
+    _, bar_length = health_bar.shape
+
+    directory = os.fsencode(nameplate_folder)
+    for file in os.listdir(directory):
+        filename = os.fsdecode(file)
+        if filename.endswith(".png"):
+            full_path = os.path.join(nameplate_folder, filename)
+            character_name = filename[:-4]
+
+            nameplate = open_image_array(full_path)[:, :, 1]  # Only g channel
+            _, width = nameplate.shape
+            indices = nameplate > 170  # Non blank pixels
+
+            for x in range(bar_length):
+                try:
+                    if images_similar(health_bar[:, x:x+width][indices],
+                                      nameplate[indices], 0.1):
+                        return(character_name)
+                except IndexError:
+                    break
+    raise RuntimeError('Could not detect character from nameplate.')
+
+
+def detect_character_select_positions(scene: np.ndarray) -> int:
+    """Detect the cursor on the character select screen.
+
+    Parameters
+    ----------
+    scene: np.ndarray
+        The current scene. The image should be an np.ndarray of ints in
+        [0, 255].
+
+    Returns
+    -------
+    p1_position: int | None
+        The position of player 1 on the character select screen.
+    p2_position: int | None
+        The position of player 2 on the character select screen.
+    """
+    p1_positon, p2_position = (None, None)
+    for key, (x1, y1, x2, y2) in CHARACTER_SELECT_FRAMES.items():
+        frame_mask = np.ones((y2 - y1, x2 - x1), dtype=bool)
+        # Cursor frame is 3 pixels thick
+        frame_mask[3:-3, 3:-3] = False
+        frame_size = frame_mask.sum()
+        frame = scene[y1:y2, x1:x2]
+        green_frame = (frame[frame_mask, 1] > 100).sum() / frame_size > 0.9
+        red_frame = (frame[frame_mask, 0] > 100).sum() / frame_size > 0.9
+        if green_frame and not red_frame:
+            # Green cursor for player 1
+            p1_positon = CHARACTER_IDS[key]
+        elif red_frame and not green_frame:
+            # Red cursor for player 2
+            p2_position = CHARACTER_IDS[key]
+    return(p1_positon, p2_position)
+
+
+def is_timer_done(scene: np.ndarray, timer_image: np.ndarray) -> bool:
+    """Detect whether the time reads 00.
+
+    Parameters
+    ----------
+    scene: np.ndarray
+        The current scene. The image should be an np.ndarray of ints in
+        [0, 255].
+
+    Returns
+    -------
+    is_timer_done: bool
+        True if the timer reads 00 and False otherwise.
+    """
+    timer = scene[TIMER_POSITION[1]:TIMER_POSITION[3],
+                  TIMER_POSITION[0]:TIMER_POSITION[2], 0]
+    mask = timer_image != 0
+    return(images_similar(timer[mask], timer_image[mask]))
+
+
+def get_health(scene: np.ndarray) -> tuple:
     """Get the current health of characters based on an image of the scene.
 
     Parameters
@@ -476,11 +665,9 @@ def get_health_bars(scene: np.ndarray) -> tuple:
     p2_health: float
         Health of second player in [0, 1].
     """
-    p1_pos, p2_pos = HEALTH_BAR_POSITIONS
-
-    p1_bar = scene[p1_pos[1]:p1_pos[3], p1_pos[0]:p1_pos[2]][:, :, 1]
-    p1_bar = np.flip(p1_bar)
-    p2_bar = scene[p2_pos[1]:p2_pos[3], p2_pos[0]:p2_pos[2]][:, :, 1]
+    p1_bar, p2_bar = get_health_bars(scene)
+    p1_bar = np.flip(p1_bar[:, :, 1])
+    p2_bar = p2_bar[:, :, 1]
 
     bar_height, bar_length = p1_bar.shape
     p1_first, p2_first = (bar_length, bar_length)
@@ -511,9 +698,9 @@ def sample_pixels(array: np.ndarray, ppr: int, ppc: int,
     array: np.ndarray
         The array to sample from.
     ppr: int
-        Number of rows to take samples from.
+        Number of samples to take per row.
     ppc: int
-        Number of columns to take samples from.
+        Number of samples to take per column.
     x_offset: int, optional
         Adds an offset to x coordinates in returned list. Defaults to 0.
     y_offset: int, optional
@@ -537,7 +724,7 @@ def sample_pixels(array: np.ndarray, ppr: int, ppc: int,
 
 
 def find_color_matches(image: np.ndarray, color: np.ndarray,
-                       color_tol: int = 5) -> np.ndarray:
+                       col_tol: int = 5) -> np.ndarray:
     """Finds all pixels on image that matches a color within a tolerance.
 
     Parameters
@@ -546,7 +733,7 @@ def find_color_matches(image: np.ndarray, color: np.ndarray,
         The image to search through.
     color: np.ndarray
         The color to match to.
-    color_tol: int, optional
+    col_tol: int, optional
         The tolerance of the color when matching the pixels. Defaults to 5.
         For a color [220, 100, 85] with a tolerance of 5, matches are any
         colors between [215, 195, 80] and [225, 105, 90].
@@ -557,8 +744,8 @@ def find_color_matches(image: np.ndarray, color: np.ndarray,
         A tuple of indices where matches occur. The size of the tuple is
         equal to 1 less than the number of dimensions of the image.
     """
-    above = (image >= color - color_tol).all(axis=-1)
-    below = (image <= color + color_tol).all(axis=-1)
+    above = (image >= color - col_tol).all(axis=-1)
+    below = (image <= color + col_tol).all(axis=-1)
     coords = np.nonzero(above * below)
     return(coords)
 
@@ -577,7 +764,7 @@ def search_pixels(img: np.ndarray, pixels: list, char: int,
         A list of tuples each containing an x coordinate, y coordinate, and
         a color index.
     char: int
-        The character whose sprites to search through. See CHARACTERS.
+        The character whose sprites to search through. See CHARACTER_IDS.
     timeout: float, optional
         The maximum time in seconds to search. Defaults to 0.25.
     min_size: tuple, optional
@@ -613,9 +800,9 @@ def search_pixels(img: np.ndarray, pixels: list, char: int,
 
 
 def find_img(img: np.ndarray, coords: tuple, sprite: Sprite,
-             min_match: float = 0.9,
-             color_tol: int = 5,
-             timeout: float = 0.25) -> tuple:
+             min_match: float = 0.8,
+             col_tol: int = 5,
+             timeout: float = 0.5) -> tuple:
     """Attempt to match a sprite to a location on an image.
 
     The match starts at the given coordinates on the image and iterates
@@ -633,10 +820,10 @@ def find_img(img: np.ndarray, coords: tuple, sprite: Sprite,
         Sprite to attempt match on.
     min_match: float, optional
         The percent of pixels that need to be matched for the sprite to
-        match to the image. Defaults to 0.9. Setting this too low will
+        match to the image. Defaults to 0.8. Setting this too low will
         increase search time but setting it to high will not match when
         characters are covered.
-    color_tol: int, optional
+    col_tol: int, optional
         The tolerance of the color when matching the pixels. Defaults to 5.
         For a color [220, 100, 85] with a tolerance of 5, matches are any
         colors between [215, 195, 80] and [225, 105, 90].
@@ -658,9 +845,10 @@ def find_img(img: np.ndarray, coords: tuple, sprite: Sprite,
 
     start_time = time.time()
     x, y = coords
+    max_height_to_search = PLAY_AREA[3] - y
     for c, _, _, match_coords in sprite.colors:
-        above = (img[y, x] >= c - color_tol).all()
-        below = (img[y, x] <= c + color_tol).all()
+        above = (img[y, x] >= c - col_tol).all()
+        below = (img[y, x] <= c + col_tol).all()
         if above and below:
             break
     sprite_x1, sprite_y1, sprite_x2, sprite_y2 = (0, 0, 0, 0)
@@ -669,6 +857,10 @@ def find_img(img: np.ndarray, coords: tuple, sprite: Sprite,
     for match_y, match_x in zip(match_coords[0], match_coords[1]):
         if time.time() - start_time > timeout:
             break
+        if (sprite_h - match_y) > max_height_to_search:
+            # Don't attempt to match coords of sprite if the match would
+            # mean the sprite clips below the play area
+            continue
         rad = 1
         prev_tiles = 0
         prev_matches = 0
@@ -688,7 +880,11 @@ def find_img(img: np.ndarray, coords: tuple, sprite: Sprite,
         cropped_img = img[crop_y1:crop_y2, crop_x1:crop_x2]
         psprite_x1 = None  # No previous check applied on sprite
 
+        match_critera = 0.1
         while True:
+            match_critera *= 1.5
+            if match_critera > min_match:
+                match_critera = min_match
             # Sprite coordinates
             sprite_x1 = match_x - rad
             sprite_y1 = match_y - rad
@@ -723,13 +919,13 @@ def find_img(img: np.ndarray, coords: tuple, sprite: Sprite,
             # Compare
             diff = np.abs(sprite_view - image_view)
             # np.ndarray.co
-            new_matches = np.count_nonzero(diff < color_tol)
+            new_matches = np.count_nonzero(diff < col_tol)
             matches = prev_matches + new_matches
             try:
                 match_pcnt = matches / n_tiles
             except ZeroDivisionError:
                 match_pcnt = 1
-            if match_pcnt < min_match:
+            if match_pcnt < match_critera:
                 break  # Sprite doesn't match here, go to next coordinate
             elif rad >= target_radius:
                 # The whole image has been checked and matches
@@ -746,3 +942,42 @@ def find_img(img: np.ndarray, coords: tuple, sprite: Sprite,
             prev_matches = matches
             prev_tiles = n_tiles
     return(None)  # No matches on sprite
+
+
+def get_environment_palette(img: np.ndarray) -> list:
+    """Extracts the palette of the environment excluding the characters.
+
+    Parameters
+    ----------
+    img: np.ndarray
+        The scene image.
+
+    Returns
+    -------
+    palette: list
+        The list of colors used in the scene.
+    """
+    left = img[PLAY_AREA[1]:PLAY_AREA[3], PLAY_AREA[0]:START_POSITIONS[0][0]]
+    right = img[PLAY_AREA[1]:PLAY_AREA[3], START_POSITIONS[1][2]:PLAY_AREA[2]]
+    joined = np.hstack((left, right)).reshape((-1, left.shape[2]))
+    palette = np.unique(joined, axis=0)
+    return(list(palette))
+
+
+def color_in_palette(color: np.ndarray, palette: list,
+                     col_tol: int = 5) -> int:
+    """Returns index of color if color is in palette.
+
+    Parameters
+    ----------
+    color: np.ndarray
+        The color to find.
+    palette: int
+        The palette to search through.
+    col_tol: int
+        The tolerance of each color channel.
+    """
+    try:
+        return(find_color_matches(palette, color, col_tol)[0][0])
+    except IndexError:
+        return(None)  # Color doesn't match any in character palette
