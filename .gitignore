@@ -5,3 +5,4 @@ venv/
 .captures/
 .vscode/
 models/[0-9]*.chkpt
+images/sprites/SpriteDB.pickle
