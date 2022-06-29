@@ -249,13 +249,10 @@ class MKNet(nn.Module):
 class MorkomAI:
     """Class used for training and using the LSTM network.
 
-    Class Attributes
-    ----------------
-    net: MKNet
-        The neural network being used.
-
     Attributes
     ----------
+    net: MKNet
+        The neural network being used.
     model_folder: str
         The path to the folder to save/load model checkpoints from.
     use_cuda: bool
@@ -269,6 +266,8 @@ class MorkomAI:
         The minimum exploration rate.
     curr_step: int
         The number of steps taken so far.
+    n_rounds: int
+        The number of rounds fought, not updated internally.
     save_every: int
         The number of steps to take between saving the model.
     burinin: int
@@ -291,14 +290,6 @@ class MorkomAI:
         The discount rate of TD target.
     discounts: tuple
         The reward discounts for sequences.
-    lstm_info_state: tuple
-        The current state for net.lstm_info.
-    lstm_controls_state: tuple
-        The current state for net.lstm_controls.
-    prev_lstm_info_state: tuple
-        The previous state for net.lstm_info.
-    prev_lstm_controls_state: tuple
-        The previous state for net.lstm_controls.
     optimizer: torch.optim.Adam
         The network optimizer.
     loss_fn: torch.nn.SmoothL1Loss
@@ -309,15 +300,11 @@ class MorkomAI:
     model_folder: str
         The path to the folder to save/load model checkpoints from.
     """
-    net: MKNet = None
-
     def __init__(self, model_folder: str) -> None:
         self.model_folder = model_folder
 
         self.use_cuda = torch.cuda.is_available()
-        if MorkomAI.net is None:
-            MorkomAI.net = MKNet().float()
-        self.net = MorkomAI.net
+        self.net = MKNet().float()
         if self.use_cuda:
             self.net = self.net.to(device="cuda")
 
@@ -325,9 +312,10 @@ class MorkomAI:
         self.exploration_rate_decay = 0.99999975
         self.exploration_rate_min = 0.05
         self.curr_step = 0
+        self.n_rounds = 0
 
         self.save_every = 5000
-        self.burnin = 250
+        self.burnin = 500
         self.learn_every = 25
         self.sync_every = 5000
 
@@ -338,11 +326,6 @@ class MorkomAI:
         self.gamma = 0.9
 
         self.set_discounts()
-
-        states = self.get_random_states()
-        p_states = self.get_random_states()
-        self.lstm_info_state, self.lstm_controls_state = states
-        self.prev_lstm_info_state, self.prev_lstm_controls_state = p_states
 
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.00025)
         self.loss_fn = torch.nn.SmoothL1Loss()
@@ -380,38 +363,40 @@ class MorkomAI:
 
         return(lstm_info_state, lstm_controls_state)
 
-    def act(self, state: torch.tensor) -> int:
+    def act(self, state: torch.tensor,
+            lstm_info_state: tuple,
+            lstm_controls_state: tuple) -> tuple:
         """Step the model forward and choose an action.
 
         Parameters
         ----------
         state: torch.tensor
             Current game state tensor.
+        lstm_info_state: tuple
+            The previous state of lstm_info.
+        lstm_controls_state: tuple
+            The previous state of lstm_info.
 
         Returns
         -------
         action: int
             Index of action to take.
+        lstm_info_state: tuple
+            The new state of lstm_info.
+        lstm_controls_state: tuple
+            The new state of lstm_info.
         """
-        # EXPLORE
         n_actions = self.net.fc_net_opt[-1]['out_features']
+        # EXPLOIT
+        net_returns = self.net(state, lstm_info_state, lstm_controls_state,
+                               online=True)
+        p_actions, lstm_info_state, lstm_controls_state = net_returns
+        p_actions = p_actions.flatten()
+        action = random.choices(list(range(n_actions)), p_actions, k=1)[0]
+
+        # EXPLORE
         if random.random() < self.exploration_rate:
             action = np.random.randint(n_actions)
-        # EXPLOIT
-        else:
-            if self.use_cuda:
-                state = state.cuda()
-
-            net_returns = self.net(state, self.lstm_info_state,
-                                   self.lstm_controls_state, online=True)
-            p_actions, lstm_info_state, lstm_controls_state = net_returns
-            self.prev_lstm_info_state = self.lstm_info_state
-            self.prev_lstm_controls_state = self.lstm_controls_state
-            self.lstm_info_state = lstm_info_state
-            self.lstm_controls_state = lstm_controls_state
-
-            p_actions = p_actions.flatten()
-            action = random.choices(list(range(n_actions)), p_actions, k=1)[0]
 
         # Decrease exploration_rate
         new_rate = self.exploration_rate * self.exploration_rate_decay
@@ -422,7 +407,7 @@ class MorkomAI:
 
         # Increment step
         self.curr_step += 1
-        return(action)
+        return(action, lstm_info_state, lstm_controls_state)
 
     def cache(self, state: torch.tensor, lstm_info_state: torch.tensor,
               lstm_controls_state: torch.tensor, next_state: torch.tensor,
@@ -695,7 +680,8 @@ class MorkomAI:
         torch.save(dict(model=self.net.state_dict(),
                         exploration_rate=self.exploration_rate,
                         curr_step=self.curr_step,
-                        memory=self.memory), save_path)
+                        memory=self.memory,
+                        n_rounds=self.n_rounds), save_path)
         print(f"Network saved to {save_path} at step {self.curr_step}.")
 
     def load(self, path: str) -> None:
@@ -712,6 +698,7 @@ class MorkomAI:
         self.exploration_rate = checkpoint['exploration_rate']
         self.curr_step = checkpoint['curr_step']
         self.memory = checkpoint['memory']
+        self.n_rounds = checkpoint['n_rounds']
 
     def load_most_recent(self) -> None:
         """Loads the last saved model on disk."""

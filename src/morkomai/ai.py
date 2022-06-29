@@ -3,7 +3,6 @@ import torch
 from collections import deque
 
 from .globals import *
-from .ml import MorkomAI
 from . import vision
 
 
@@ -54,6 +53,15 @@ class AI:
         The previous reward value.
     prev_state: torch.tensor
         The previous match state.
+    lstm_info_state: tuple
+        The current state for lstm_model.net.lstm_info.
+    lstm_controls_state: tuple
+        The current state for lstm_model.net.lstm_controls.
+    prev_lstm_info_state: tuple
+        The previous state for lstm_model.net.lstm_info.
+    prev_lstm_controls_state: tuple
+        The previous state for lstm_model.net.lstm_controls.
+
 
     Parameters
     ----------
@@ -65,13 +73,11 @@ class AI:
         The character to choose. Default is Johnny Cage. See CHARACTERS.
     reporting: bool, optional
         If True, the AI outputs its actions to console. Defaults to True.
-    model_folder: str, optional
-        The folder to store ML models in.
     """
     def __init__(self, controller, player: int, character: str = 'Johnny Cage',
-                 reporting: bool = True, model_folder: str = 'models') -> None:
+                 reporting: bool = True) -> None:
         self.controller = controller
-        self.lstm_model = MorkomAI(model_folder)
+        self.lstm_model = self.controller.lstm_model
         self.player = player
         self.reporting = reporting
         self.prev_message = ['', 0]
@@ -142,6 +148,10 @@ class AI:
 
     def reset_lstm_state(self) -> None:
         """Resets the lstm state of the AI."""
+        states = self.lstm_model.get_random_states()
+        p_states = self.lstm_model.get_random_states()
+        self.lstm_info_state, self.lstm_controls_state = states
+        self.prev_lstm_info_state, self.prev_lstm_controls_state = p_states
         self.prev_input = 0
         self.prev_reward = 0
         self.prev_state = torch.tensor([START_POSITIONS[0][0] / ARENA_SIZE[0],
@@ -351,7 +361,13 @@ class AI:
                               enemy_spid,
                               CHARACTER_IDS[self.enemy_character]
                               ]).unsqueeze(0).unsqueeze(0).float()
-        choice = self.lstm_model.act(state)
+        net_returns = self.lstm_model.act(state, self.lstm_info_state,
+                                          self.lstm_controls_state)
+        self.prev_lstm_info_state = self.lstm_info_state
+        self.prev_lstm_controls_state = self.lstm_controls_state
+        choice, lstm_info_state, lstm_controls_state = net_returns
+        self.lstm_info_state = lstm_info_state
+        self.lstm_controls_state = lstm_controls_state
 
         if update_model:
             self.update_ai_memory(state)
@@ -407,15 +423,12 @@ class AI:
             The current match state.
         """
         p_state = torch.clone(self.prev_state)
-        p_info_state = (torch.clone(x) for x in
-                        self.lstm_model.prev_lstm_info_state)
+        p_info_state = (torch.clone(x) for x in self.prev_lstm_info_state)
         p_controls_state = (torch.clone(x) for x in
-                            self.lstm_model.prev_lstm_controls_state)
+                            self.prev_lstm_controls_state)
         state = torch.clone(state)
-        info_state = (torch.clone(x) for x in
-                      self.lstm_model.lstm_info_state)
-        controls_state = (torch.clone(x) for x in
-                          self.lstm_model.lstm_controls_state)
+        info_state = (torch.clone(x) for x in self.lstm_info_state)
+        controls_state = (torch.clone(x) for x in self.lstm_controls_state)
 
         self.match_memory.append((p_state, p_info_state, p_controls_state,
                                   state, info_state, controls_state,

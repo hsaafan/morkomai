@@ -9,6 +9,7 @@ from .ai import AI
 from .mortalkombat import MortalKombat
 from .recorder import open_image_floats, open_image_array, convert_to_array
 from . import vision
+from .ml import MorkomAI
 
 
 def start_game(AI_1: bool = False, AI_2: bool = False,
@@ -86,6 +87,8 @@ class Controller:
         The previous bounding box of the player 2 sprite (x1, y1, x2, y2).
     n_rounds: int
         A count of how many rounds the controller has played.
+    lstm_model: MorkomAI
+        The LSTM model to use for choosing actions.
 
     Parameters
     ----------
@@ -119,7 +122,8 @@ class Controller:
         # AI
         self.randomize_characters = randomize_characters
         self.ai_players = []
-        self.n_rounds = 0
+        self.lstm_model = MorkomAI(self.game.model_folder)
+        self.n_rounds = self.lstm_model.n_rounds
 
     def _get_use_vision(self) -> bool:
         if self._vision_override:
@@ -196,8 +200,7 @@ class Controller:
                 - 'lstm'
         """
         player = len(self.ai_players)
-        self.ai_players.append(AI(self, player, char, False,
-                                  self.game.model_folder))
+        self.ai_players.append(AI(self, player, char, False))
         self.set_tactics(player, tactics)
 
     def set_tactics(self, player: int, tactics: str) -> None:
@@ -325,7 +328,8 @@ class Controller:
     def end_of_match(self) -> None:
         """Run at the end of every match."""
         self.n_rounds += 1
-        print(f'End of fight. Total rounds this session: {self.n_rounds}')
+        self.lstm_model.n_rounds = self.n_rounds
+        print(f'End of fight. Total rounds: {self.n_rounds}')
         self.clear_key_queues()
         self.set_AI_states(AI_STATES['INTERMISSION'])
         self.reset_vision_bounds()
